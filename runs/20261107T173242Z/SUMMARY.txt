@@ -21,9 +21,18 @@ T4   : OK       evidence=runs/20261107T173242Z/T4/  console=runs/20261107T173242
 T5   : rc=1     evidence=runs/20261107T173242Z/T5/  console=runs/20261107T173242Z/T5.console.log
     reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
     reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+<<<<<<< HEAD
 T8   : OK       evidence=runs/20261107T173242Z/T8/  console=runs/20261107T173242Z/T8.console.log
     reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
     reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
 
 finished_utc: 2026-11-07T18:11:17Z
 overall     : SOME-FAILED
+=======
+T6   : OK       evidence=runs/20261107T173242Z/T6/  console=runs/20261107T173242Z/T6.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T7   : OK       evidence=runs/20261107T173242Z/T7/  console=runs/20261107T173242Z/T7.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+>>>>>>> f48db42 (results from one touch)
