@@ -297,7 +297,7 @@ option. The full list of environment variables is in [dev.md](dev.md#9-configura
 The simulator image contains Gazebo Fortress, ROS 2 and the six-robot hospital world. Pull the submitted image:
 
 ```bash
-docker pull kautuk05/ds252-icc:gazebo_hospital_submitted
+docker pull kautuk05/ds252-icc:gazebo_hospital_submitted2
 ```
 
 If that image is not available, use the earlier one (`kautuk05/ds252-icc:gazebo_hospital`) in place of it in the
@@ -310,7 +310,7 @@ docker pull kautuk05/ds252-icc:gazebo_hospital
 Start the container with the Gazebo window, the GPU and host networking (Linux with an X display):
 
 ```bash
-docker run -it --privileged -v /tmp/.X11-unix:/tmp/.X11-unix:ro --env=DISPLAY=:1 --gpus=all --env="QT_X11_NO_MITSHM=1" -e XAUTHORITY=/run/user/1012/gdm/Xauthority -v /run/user/1012/gdm/Xauthority:/run/user/1012/gdm/Xauthority --device=/dev/dri:/dev/dri --network=host --ipc=host kautuk05/ds252-icc:gazebo_hospital_submitted
+docker run -it --privileged -v /tmp/.X11-unix:/tmp/.X11-unix:ro --env=DISPLAY=:1 --gpus=all --env="QT_X11_NO_MITSHM=1" -e XAUTHORITY=/run/user/1012/gdm/Xauthority -v /run/user/1012/gdm/Xauthority:/run/user/1012/gdm/Xauthority --device=/dev/dri:/dev/dri --network=host --ipc=host kautuk05/ds252-icc:gazebo_hospital_submitted2
 ```
 
 `DISPLAY=:1` and `/run/user/1012/...` are the display and user id of the machine this was run on: use your own
@@ -322,11 +322,11 @@ Alternatively, `scripts/docker_gazebo.sh` mounts this repository into the contai
 on macOS, and `IMAGE=` picks the image:
 
 ```bash
-IMAGE=kautuk05/ds252-icc:gazebo_hospital_submitted ./scripts/docker_gazebo.sh
+IMAGE=kautuk05/ds252-icc:gazebo_hospital_submitted2 ./scripts/docker_gazebo.sh
 ```
 
 ```bash
-HEADLESS=1 IMAGE=kautuk05/ds252-icc:gazebo_hospital_submitted ./scripts/docker_gazebo.sh
+HEADLESS=1 IMAGE=kautuk05/ds252-icc:gazebo_hospital_submitted2 ./scripts/docker_gazebo.sh
 ```
 
 On Apple Silicon the image runs under emulation (give Docker at least 6 CPUs and 8 GB).
