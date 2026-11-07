@@ -24,7 +24,6 @@ robots, the web apps, the AWS deployment, and the experiments that measure all o
 - Message formats between cloud and edge: [docs/EDGE_CLOUD_PROTOCOL.md](docs/EDGE_CLOUD_PROTOCOL.md)
 - Measured results: [results/final/RESULTS.md](results/final/RESULTS.md) (one table for every final experiment)
 - Install, run and reproduce everything: [section 6](#6-install-run-and-reproduce)
-- How to add your experiment's results: [docs/RESULTS_GUIDE.md](docs/RESULTS_GUIDE.md)
 
 ---
 
@@ -629,5 +628,5 @@ archive/                                     files no longer needed to run (kept
 ## 9. Team
 
 Team Nimbus, DS252 Introduction to Cloud Computing (Aug to Nov 2026), IISc: Kautuk Astu, M Vaibhav, Garrepally
-Akshaya and C Veera Sai Charan Teja. The work covers four areas: simulation and safety, the edge tier, cloud
+Akshaya and CV Sai Charan Teja. The work covers four areas: simulation and safety, the edge tier, cloud
 orchestration, and infrastructure and logging.
