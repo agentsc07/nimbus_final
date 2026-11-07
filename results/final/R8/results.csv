@@ -1,0 +1,2 @@
+run,task_id,primary_pid,standby_pid,failure_stage,takeover_time_s,duplicate_actions,lease_conflict,task_resumed,success,failure_reason
+1,N/A,N/A,N/A,prerequisite_check,N/A,N/A,N/A,false,false,"BLOCKED: no multi-process leadership/fencing and no shared robot execution audit"

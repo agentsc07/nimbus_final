@@ -1,0 +1,4 @@
+mode,profile,seed,started_utc,success,final_status,outcome,decided_by,task_id,request_to_lease_s,completion_time_s,time_to_outcome_s,robot_execution_s,deadline_s,deadline_met,obstacle_decisions,max_decision_latency_ms,total_decision_latency_ms,link_bytes_forwarded,link_packets_dropped,failure_reason
+C1,severe,1,2026-11-07T17:41:09Z,True,COMPLETED,delivered,SLM,task-000001,1.047,13.892,13.892,12.845,720,True,6,15.0,99.1,23501,0,
+C2,severe,1,2026-11-07T17:41:25Z,False,ESCALATED_UNEXPECTED,STALLED -> escalated (relay could not resolve over the bad link),C2_RELAY,task-000001,1.145,,3.916,2.771,720,False,1,1142.2,1143.2,6773,2,C2 cloud relay (llm): no route inside the lease
+C3,severe,1,2026-11-07T17:41:30Z,True,COMPLETED,delivered,C3_FSM,task-000001,1.356,13.966,13.966,12.61,720,True,4,1.5,9.0,20009,1,

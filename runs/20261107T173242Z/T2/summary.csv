@@ -1,0 +1,4 @@
+mode,profile,seed,started_utc,netem_applied,success,parked,failed,final_status,outcome,task_id,request_to_lease_s,completion_time_s,time_to_fail_s,deadline_s,deadline_met,failure_reason,rtt_ms_mean,probes,loss_pct,bg_throughput_mbps,bg_requests,bg_bytes,outage_duration_s,recovery_time_s,cloud_llm_calls
+C1,outage,1,2026-11-07T17:36:44Z,False,True,False,False,COMPLETED,delivered,task-000001,0.018,50.67,,720,True,,2.11,15,73.33,0.003,80,17504,50.65,0.4,1
+C2,outage,1,2026-11-07T17:37:38Z,False,False,False,True,ESCALATED_UNEXPECTED,"HALTED (no local brain; escalated to operator, but WAN down -> escalation stuck in offline outbox) - delivery FAILED",task-000001,0.02,,14.135,720,False,C2 relay: cloud unreachable; a cloud-only relay cannot decide locally.,1.79,6,50.0,0.007,28,13068,14.12,0.42,1
+C3,outage,1,2026-11-07T17:37:54Z,False,True,False,False,COMPLETED,delivered,task-000001,0.024,18.965,,720,True,,2.24,7,57.14,0.009,44,21940,18.94,0.17,0

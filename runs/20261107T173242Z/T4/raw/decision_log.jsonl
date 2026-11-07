@@ -1,0 +1,24 @@
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_WAIT", "latency_ms": 15.01215934753418, "reason": "Transient corridor obstacle detected; waiting for passage clearance."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_WAIT", "latency_ms": 15.011205673217773, "reason": "Transient corridor obstacle detected; waiting for passage clearance."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_DETOUR", "latency_ms": 15.011920928955078, "reason": "Corridor path blocked; taking local detour via permitted bypass east_south_hall."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "go_to", "latency_ms": 1.5, "reason": null}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "wait", "latency_ms": 1.5, "reason": null}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_WAIT", "latency_ms": 15.011920928955078, "reason": "Transient corridor obstacle detected; waiting for passage clearance."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_WAIT", "latency_ms": 15.011682510375977, "reason": "Transient corridor obstacle detected; waiting for passage clearance."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "SLM", "action": "LOCAL_DETOUR", "latency_ms": 15.01215934753418, "reason": "Corridor path blocked; taking local detour via permitted bypass east_south_hall."}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "go_to", "latency_ms": 1.5, "reason": null}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "beep", "latency_ms": 1.5, "reason": null}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "photo", "latency_ms": 1.5, "reason": null}
+{"mode": "C1", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "report", "latency_ms": 1.5, "reason": null}
+{"mode": "C2", "profile": "severe", "seed": 1, "decided_by": "C2_RELAY", "action": "ESCALATE_UNEXPECTED", "latency_ms": 1142.2042846679688, "reason": "C2 cloud relay (llm): no route inside the lease"}
+{"mode": "C2", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": null, "latency_ms": 1.0, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "C3_FSM", "action": "LOCAL_WAIT", "latency_ms": 0.0, "reason": "C3 rules: wait once, then retry the blocked route."}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "C3_FSM", "action": "LOCAL_DETOUR", "latency_ms": 0.0, "reason": "C3 rules: retry failed; detour via east_south_hall."}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "go_to", "latency_ms": 1.5, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "wait", "latency_ms": 1.5, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "C3_FSM", "action": "LOCAL_WAIT", "latency_ms": 0.0, "reason": "C3 rules: wait once, then retry the blocked route."}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "C3_FSM", "action": "LOCAL_DETOUR", "latency_ms": 0.0, "reason": "C3 rules: retry failed; detour via east_south_hall."}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "go_to", "latency_ms": 1.5, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "beep", "latency_ms": 1.5, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "photo", "latency_ms": 1.5, "reason": null}
+{"mode": "C3", "profile": "severe", "seed": 1, "decided_by": "RULE", "action": "report", "latency_ms": 1.5, "reason": null}

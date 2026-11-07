@@ -21,10 +21,10 @@
 #   scenario needs. Kinematic simulator throughout (like T2), no Gazebo required.
 #
 # Usage:
-#   ./T8.sh                       # kinematic, configs C1 C2 C3
-#   ./T8.sh gazebo                # full Gazebo instead of kinematic
-#   T8_CONFIGS="C1 C3" ./T8.sh    # a subset, in that order
-#   T8_TIMEOUT=1500 ./T8.sh       # longer per-config wait (seconds)
+#   ./experiments/T8.sh                       # kinematic, configs C1 C2 C3
+#   ./experiments/T8.sh gazebo                # full Gazebo instead of kinematic
+#   T8_CONFIGS="C1 C3" ./experiments/T8.sh    # a subset, in that order
+#   T8_TIMEOUT=1500 ./experiments/T8.sh       # longer per-config wait (seconds)
 #
 # Endpoints (override via env):
 #   CLOUD_C1, CLOUD_C2 (deployed), CLOUD_C3 (local). NIMBUS_LLM=bedrock (+creds)
@@ -33,7 +33,7 @@
 # Results (per-config edge/cloud logs) are written under T8_results/.
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 SIM_MODE="${1:-kinematic}"                    # kinematic (default, like T2) | gazebo | auto

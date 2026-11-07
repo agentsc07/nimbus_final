@@ -69,7 +69,7 @@ generated README so nothing is silently substituted):
   a loss spike); recovery is measured from the first probe that succeeds after the
   cut is lifted; background throughput is bytes actually pulled by the generator.
 
-Usage (normally invoked by T2.sh):
+Usage (normally invoked by experiments/T2.sh):
     python3 scripts/run_t2.py --mode C1 --seed 1
     python3 scripts/run_t2.py --plot-only          # aggregate raw/ -> summary + plots
 """

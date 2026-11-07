@@ -1,0 +1,11 @@
+R8 prerequisite check at 2026-11-07T17:41:43Z
+requested_mode=--smoke
+planned_trials=1
+
+Blocking findings:
+- edge/run_supervisor.py exposes no primary/standby role, node identity, or leader activation interface
+- edge/store/local_store.py has no lease-owner claim or fencing mechanism for concurrent supervisors
+- test_failover_takeover.py is in-process and does not exercise separate supervisor PIDs
+- e5_benchmark.py is in-process and is not valid separate-process takeover evidence
+
+No primary or standby process was started.

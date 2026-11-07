@@ -35,15 +35,15 @@
 #   no outage, so they DO use the deployed C1/C2 endpoints.
 #
 # Usage:
-#   ./T2.sh                         # C1 C2 C3, one seed
-#   T2_MODES="C1 C2" T2_SEEDS="1 2" ./T2.sh
+#   ./experiments/T2.sh                         # C1 C2 C3, one seed
+#   T2_MODES="C1 C2" T2_SEEDS="1 2" ./experiments/T2.sh
 #
 # Env knobs: T2_MODES, T2_SEEDS, T2_IFACE (apply real netem there if tc exists),
 # NIMBUS_LLM=bedrock (+creds) for real Bedrock on C1/C2, NIMBUS_PACK to override
 # the compressed-timing pack (default packs/hospital_sim6_t2).
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 for arg in "$@"; do

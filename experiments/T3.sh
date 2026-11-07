@@ -21,10 +21,10 @@
 #   Then save logs, full cleanup, next configuration.
 #
 # Usage:
-#   ./T3.sh                 # Gazebo, configs C1 C2 C3
-#   ./T3.sh kinematic       # Gazebo-less simulator
-#   T3_CONFIGS="C1 C3" ./T3.sh
-#   T3_TIMEOUT=1500 ./T3.sh gazebo
+#   ./experiments/T3.sh                 # Gazebo, configs C1 C2 C3
+#   ./experiments/T3.sh kinematic       # Gazebo-less simulator
+#   T3_CONFIGS="C1 C3" ./experiments/T3.sh
+#   T3_TIMEOUT=1500 ./experiments/T3.sh gazebo
 #
 # Notes:
 #   * Cloud endpoint is per-config (CLOUD_C1/CLOUD_C2/CLOUD_C3). C1/C2 target
@@ -41,7 +41,7 @@
 #   * Results are written under T3_results/.
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 SIM_MODE="${1:-gazebo}"

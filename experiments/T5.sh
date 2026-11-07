@@ -18,12 +18,12 @@
 #   or map change on the cloud) -- the scenario is designed around the real cloud.
 #
 # Usage:
-#   ./T5.sh                        # C1 C2 C3, one seed
-#   T5_MODES="C1 C2" T5_SEEDS="1 2" ./T5.sh
-#   CLOUD_C1=... CLOUD_C2=... ./T5.sh      # override endpoints
+#   ./experiments/T5.sh                        # C1 C2 C3, one seed
+#   T5_MODES="C1 C2" T5_SEEDS="1 2" ./experiments/T5.sh
+#   CLOUD_C1=... CLOUD_C2=... ./experiments/T5.sh      # override endpoints
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 for arg in "$@"; do

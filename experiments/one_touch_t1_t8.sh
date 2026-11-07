@@ -16,16 +16,16 @@
 #       SUMMARY.txt           <- per-test exit status + where its evidence went
 #
 # Usage:
-#   ./one_touch_t1_t8.sh                 # T1..T8
-#   TESTS="T2 T4 T7" ./one_touch_t1_t8.sh   # a subset, in that order
-#   CLOUD_C1=... CLOUD_C2=... ./one_touch_t1_t8.sh
+#   ./experiments/one_touch_t1_t8.sh                 # T1..T8
+#   TESTS="T2 T4 T7" ./experiments/one_touch_t1_t8.sh   # a subset, in that order
+#   CLOUD_C1=... CLOUD_C2=... ./experiments/one_touch_t1_t8.sh
 #
 # Note: T1/T3/T8 bring up the full stack via run_all.sh in KINEMATIC mode (no Gazebo);
 # T2/T4/T5/T6/T7 drive the kinematic edge directly. The suite is sequential; the real
 # deployed cloud is slow, so a full pass takes a while.
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -83,7 +83,7 @@ reset_memory | tee -a "$SUMMARY"
 
 overall=0
 for t in "${TESTS[@]}"; do
-  script="./$t.sh"
+  script="experiments/$t.sh"
   if [ ! -f "$script" ]; then
     say "SKIP $t (no $script)"; printf '%-4s : SKIPPED (no script)\n' "$t" >>"$SUMMARY"; continue
   fi

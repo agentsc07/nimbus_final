@@ -23,7 +23,7 @@ This is a REAL run against the deployed cloud (creates real tasks; shows in the 
 We MEASURE, per config: whether a cross-wing hand-over happened, the leg sequence of
 wings, who decided it (LLM vs rules), and completion.  Ideal order C1 > C2 >> C3.
 
-Usage (normally via T5.sh):
+Usage (normally via experiments/T5.sh):
     python3 scripts/run_t5.py --mode C1 --seed 1
     python3 scripts/run_t5.py --plot-only
 """

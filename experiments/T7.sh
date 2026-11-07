@@ -20,12 +20,12 @@
 #   posted as custom data the cloud might reject.
 #
 # Usage:
-#   ./T7.sh                        # C1 C2 C3, one pass
-#   T7_MODES="C1 C2" T7_SEEDS="1 2" ./T7.sh
-#   CLOUD_C1=... CLOUD_C2=... ./T7.sh
+#   ./experiments/T7.sh                        # C1 C2 C3, one pass
+#   T7_MODES="C1 C2" T7_SEEDS="1 2" ./experiments/T7.sh
+#   CLOUD_C1=... CLOUD_C2=... ./experiments/T7.sh
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 MODES=(${T7_MODES:-C1 C2 C3})

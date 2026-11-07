@@ -9,10 +9,10 @@
 #     save that run's logs  ->  full cleanup  ->  next configuration.
 #
 # Usage:
-#   ./T1.sh                 # Gazebo (6 racecars), configs C1 C2 C3
-#   ./T1.sh kinematic       # Gazebo-less kinematic simulator
-#   T1_CONFIGS="C1 C3" ./T1.sh          # a subset, in that order
-#   T1_TIMEOUT=1500 ./T1.sh gazebo      # longer per-config wait (seconds)
+#   ./experiments/T1.sh                 # Gazebo (6 racecars), configs C1 C2 C3
+#   ./experiments/T1.sh kinematic       # Gazebo-less kinematic simulator
+#   T1_CONFIGS="C1 C3" ./experiments/T1.sh          # a subset, in that order
+#   T1_TIMEOUT=1500 ./experiments/T1.sh gazebo      # longer per-config wait (seconds)
 #
 # Notes:
 #   * Cloud endpoint is per-config (CLOUD_C1 / CLOUD_C2 / CLOUD_C3 below):
@@ -25,7 +25,7 @@
 #   * Results (per-config edge/cloud logs) are written under T1_results/.
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 SIM_MODE="${1:-gazebo}"                       # gazebo | kinematic | auto

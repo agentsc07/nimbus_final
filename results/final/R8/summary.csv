@@ -1,0 +1,2 @@
+planned_trials,executed_trials,passed,blocked,takeover_time_s,duplicate_actions,lease_conflict,task_resumed,verdict
+1,0,0,1,N/A,N/A,N/A,false,BLOCKED

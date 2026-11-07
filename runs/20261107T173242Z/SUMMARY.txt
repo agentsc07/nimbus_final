@@ -9,3 +9,21 @@ started_utc : 2026-11-07T17:32:42Z
 T1   : rc=1     evidence=runs/20261107T173242Z/T1/  console=runs/20261107T173242Z/T1.console.log
     reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
     reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T2   : OK       evidence=runs/20261107T173242Z/T2/  console=runs/20261107T173242Z/T2.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T3   : rc=1     evidence=runs/20261107T173242Z/T3/  console=runs/20261107T173242Z/T3.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T4   : OK       evidence=runs/20261107T173242Z/T4/  console=runs/20261107T173242Z/T4.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T5   : rc=1     evidence=runs/20261107T173242Z/T5/  console=runs/20261107T173242Z/T5.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+T8   : OK       evidence=runs/20261107T173242Z/T8/  console=runs/20261107T173242Z/T8.console.log
+    reset ok   : https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com
+    reset ok   : https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com
+
+finished_utc: 2026-11-07T18:11:17Z
+overall     : SOME-FAILED

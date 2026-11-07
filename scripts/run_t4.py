@@ -38,7 +38,7 @@ Method / honesty (documented in the generated README):
   latency at the obstacle. C2's decision latency is the bad-link round trip; C1/C3
   decide locally (~0 link cost).
 
-Usage (normally via T4.sh):
+Usage (normally via experiments/T4.sh):
     python3 scripts/run_t4.py --mode C1 --profile severe --seed 1
     python3 scripts/run_t4.py --plot-only
 """

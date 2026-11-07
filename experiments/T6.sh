@@ -31,12 +31,12 @@
 #   shows in the operator GUI). It uses the REAL map -- no pack/map change.
 #
 # Usage:
-#   ./T6.sh                         # C1 C2 C3, one pass
-#   T6_MODES="C1 C3" ./T6.sh        # a subset
-#   CLOUD_C1=... CLOUD_C2=... ./T6.sh
+#   ./experiments/T6.sh                         # C1 C2 C3, one pass
+#   T6_MODES="C1 C3" ./experiments/T6.sh        # a subset
+#   CLOUD_C1=... CLOUD_C2=... ./experiments/T6.sh
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 MODES=(${T6_MODES:-C1 C2 C3})

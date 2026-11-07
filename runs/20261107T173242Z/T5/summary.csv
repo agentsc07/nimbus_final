@@ -1,0 +1,4 @@
+mode,seed,closed_corner,started_utc,cloud_url,cloud_kind,task_id,success,completed,final_status,cross_wing_handover,decided_by,outcome,cloud_llm_calls,request_to_lease_s,completion_time_s,deadline_s,deadline_met
+C1,1,east_south_hall_corner,2026-11-07T17:41:48Z,https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com,deployed,task-000776,True,True,completed,True,,delivered via cross-wing hand-over,3,3.103,115.358,720,True
+C2,1,east_south_hall_corner,2026-11-07T17:43:49Z,https://xkczmnuqla.execute-api.ap-south-1.amazonaws.com,deployed,task-000025,False,False,leased,True,llm,NOT delivered (leased),4,1.087,,720,False
+C3,1,east_south_hall_corner,2026-11-07T17:46:24Z,http://127.0.0.1:49075,local,task-000001,False,False,leased,True,rules,NOT delivered (leased),0,0.017,,720,False

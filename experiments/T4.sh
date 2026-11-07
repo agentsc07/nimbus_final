@@ -26,15 +26,15 @@
 #        applied against a managed HTTPS endpoint from this host.
 #
 # Usage:
-#   ./T4.sh                              # C1 C2 C3 on the 'severe' bad link
-#   T4_PROFILES="healthy severe" ./T4.sh # add a healthy baseline (shows C2's latency jump)
-#   T4_PROFILES="800:200:0.1" ./T4.sh    # custom link: latency_ms:jitter_ms:loss_rate
-#   T4_MODES="C1 C2" T4_SEEDS="1 2" ./T4.sh
+#   ./experiments/T4.sh                              # C1 C2 C3 on the 'severe' bad link
+#   T4_PROFILES="healthy severe" ./experiments/T4.sh # add a healthy baseline (shows C2's latency jump)
+#   T4_PROFILES="800:200:0.1" ./experiments/T4.sh    # custom link: latency_ms:jitter_ms:loss_rate
+#   T4_MODES="C1 C2" T4_SEEDS="1 2" ./experiments/T4.sh
 #
 # Profiles: healthy | mild_wan | shielded_room | severe | <lat:jitter:loss>
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."   # run from repo root (script now lives in experiments/)
 ROOT="$PWD"
 
 for arg in "$@"; do

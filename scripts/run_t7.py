@@ -14,7 +14,7 @@ it found -- and that depends on how smart the edge is:
     per place.  In between.
 
 Scoping & safety (per the two constraints):
-  * This change is scoped to T7 ONLY: all logic is here + T7.sh; scripts/edge_sim.py and
+  * This change is scoped to T7 ONLY: all logic is here + experiments/T7.sh; scripts/edge_sim.py and
     every other shared file are UNTOUCHED.  edge_sim runs in its normal mode.
   * We send ONLY standard, schema-conforming traffic to the cloud (a normal survey
     request + normal edge_sim execution).  The per-config survey-report payload is
@@ -25,7 +25,7 @@ Scoping & safety (per the two constraints):
 Cloud (project rule -- C1/C2 ALWAYS use the deployed endpoints):
   C1 -> deployed qrgdidp9te,  C2 -> deployed xkczmnuqla,  C3 -> local classical cloud.
 
-Usage (normally via T7.sh):
+Usage (normally via experiments/T7.sh):
     python3 scripts/run_t7.py --mode C1 --seed 1
     python3 scripts/run_t7.py --plot-only
 """
