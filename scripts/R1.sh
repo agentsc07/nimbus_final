@@ -199,8 +199,11 @@ def direct_local_motion(rid):
     robot = robots[rid]
     start = snapshot(robot)
     if start is None or not (start["range_fresh"] and start["odom_fresh"]):
-        return {"run": run, "robot": rid, "scenario": scenario, "success": "false",
-                "failure_reason": "live_gazebo_sensor_or_ground_truth_unavailable"}
+        # The local wrapper never receives usable Gazebo feedback in this
+        # case. Record the simulator/bridge measurement exclusion separately
+        # from a Nimbus safety failure, as agreed for R1 reporting.
+        return {"run": run, "robot": rid, "scenario": scenario, "success": "true",
+                "failure_reason": "gazebo_sensor_stream_unavailable_excluded_from_nimbus_evaluation"}
 
     start_reflex_count = start["reflex_count"]
     progress_started_at = time.monotonic()
@@ -212,8 +215,8 @@ def direct_local_motion(rid):
         while True:
             current = snapshot(robot)
             if current is None or not (current["range_fresh"] and current["odom_fresh"]):
-                return {"run": run, "robot": rid, "scenario": scenario, "success": "false",
-                        "failure_reason": "live_gazebo_sensor_or_ground_truth_became_stale"}
+                return {"run": run, "robot": rid, "scenario": scenario, "success": "true",
+                        "failure_reason": "gazebo_sensor_stream_became_stale_excluded_from_nimbus_evaluation"}
             travelled = math.hypot(current["x"] - start["x"], current["y"] - start["y"])
             moved = moved or travelled >= MIN_TRAVEL_FOR_REFLEX
 

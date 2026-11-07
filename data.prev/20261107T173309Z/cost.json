@@ -2,7 +2,7 @@
  "input_tokens": 0,
  "output_tokens": 0,
  "llm_calls": 0,
- "fargate_gbs": 170.01966883428395,
+ "fargate_gbs": 15.001414677128196,
  "iot_messages": 0,
  "dynamodb_ops": 0,
  "sqs_messages": 0,

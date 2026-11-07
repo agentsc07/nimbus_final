@@ -63,6 +63,13 @@ class EdgeSLMEngine:
         if self.mode == "ollama":
             self.warmup_model()
 
+    @property
+    def is_real_model(self) -> bool:
+        """True when decisions come from a real local model (Ollama or llama.cpp),
+        not the deterministic mock/rules stand-in. Used by the E2 benchmark's
+        require_real_model guard so mock accuracy is never reported as the Edge SLM."""
+        return self.mode in ("ollama", "llama_cpp")
+
     def warmup_model(self) -> float:
         """Warms up the model during initialization and records cold-start latency (M9)."""
         if self.mode != "ollama":

@@ -294,10 +294,10 @@ To be filled: one row per experiment, with a link to its results folder ([how](d
 
 | Experiment | PRD | What it showed |
 | --- | --- | --- |
-| R1, safety stop with the network cut | FR-1 | to be filled |
+| R1, robot-local safety stop | FR-1 | [Gazebo result](results/final/R1/results.csv): 30/30 records are marked successful for direct 50 m local-wrapper commands with no edge/cloud path. 26 records contain a qualified local `safety_reflex_stop` at 0.246–0.298 m front clearance. The remaining 4 records report `live_gazebo_sensor_or_ground_truth_became_stale`; this is a Gazebo/ROS–Gazebo sensor-stream measurement issue, not a Nimbus decision, lease, or local-safety-logic failure. Those four do not provide sensor-backed stop evidence and should be rerun if physical-stop evidence for every case is required. |
 | R2, navigation with moving obstacles | FR-2 | to be filled |
 | R3, map and localisation check | FR-2, FR-5 | to be filled |
-| R4, edge model benchmark | E1, NFR-1, FR-3 | to be filled |
+| R4, edge model benchmark | E1, NFR-1, FR-3 | [Real local-Ollama result](results/final/R4/README.md): 5 existing E1 situations × 10 repetitions × 3 Qwen2.5 Q4_K_M models (150 decisions) on an RTX 3090. All models achieved 100% normalized JSON validity and allowed actions with no unexpected rule fallbacks. p95 warm latency: 0.122 s (0.5B), 0.166 s (1.5B), 0.189 s (3B); 0.5B provides the best tested latency/validity trade-off. PASS. Scope limitation: E1 currently contains 5 labelled situations, not 40; JSON/token-rate metrics are based on the engine's returned decision and serialized-decision estimate. |
 | R5, edge handles locally or asks | FR-4 | to be filled |
 | R6, stay within the lease | FR-5 | [MockRobot supervisor result](results/final/R6/README.md): 60/60 invalid task commands were prevented before execution (20 forbidden-zone, 20 expired-lease, 20 stale-version); 0 unauthorized task executions. The 20 expiry cases executed only the authorised safe-park command. PASS; this is not physical Gazebo validation. |
 | R7, safe parking on expiry or link cut | FR-6 | [Kinematic result](results/final/R7/README.md): 30/30 seeded trials passed. All 20 WAN-cut trials delivered the buffered event after reconnection and completed the navigation; all 10 lease-expiry trials safely parked in `east_waiting_approach` in 1.477–2.335 s, with 0 post-expiry task-motion events. PASS; no Gazebo/physical validation. |

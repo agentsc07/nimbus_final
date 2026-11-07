@@ -1,0 +1,58 @@
+================================================================
+R5 -- Edge Decision Quality (E2, FR-4)   mode=smoke   situations=40
+================================================================
+
+== Edge SLM (engine mode: ollama = REAL model) ==
+  correct decisions     : 18/40 (45.0%)   target >= 80%  -> FAIL
+  escalation rate       : 13/40 (32.5%)
+  incorrect local-action: 5/40 (12.5%)  (acted locally when it should not have)
+  accuracy by situation type:
+      Ambiguity            1/6 (16.7%)
+      Hardware Fault       0/6 (0.0%)
+      Lease Expiry         4/4 (100.0%)
+      Route Closure        5/6 (83.3%)
+      Static Detour        0/8 (0.0%)
+      Transient Obstacle   8/10 (80.0%)
+
+== Rule-based engine ==
+  correct decisions     : 30/40 (75.0%)   target >= 80%  -> FAIL
+  escalation rate       : 6/40 (15.0%)
+  incorrect local-action: 7/40 (17.5%)  (acted locally when it should not have)
+  accuracy by situation type:
+      Ambiguity            1/6 (16.7%)
+      Hardware Fault       4/6 (66.7%)
+      Lease Expiry         4/4 (100.0%)
+      Route Closure        5/6 (83.3%)
+      Static Detour        6/8 (75.0%)
+      Transient Obstacle   10/10 (100.0%)
+
+================================================================
+LEASE-SCOPE RUBRIC: solve lease-allowed events locally; else CLARIFY / UNEXPECTED.
+(Re-scored from the same decisions; credits correct escalation, e.g. hardware
+ fault -> UNEXPECTED instead of the benchmark's local SWAP_ROBOT.)
+================================================================
+
+== Edge SLM (engine mode: ollama = REAL model) [lease-scope rubric] ==
+  correct decisions     : 24/40 (60.0%)   target >= 80%  -> FAIL
+      Ambiguity            1/6 (16.7%)
+      Hardware Fault       6/6 (100.0%)
+      Lease Expiry         4/4 (100.0%)
+      Route Closure        5/6 (83.3%)
+      Static Detour        0/8 (0.0%)
+      Transient Obstacle   8/10 (80.0%)
+
+== Rule-based engine [lease-scope rubric] ==
+  correct decisions     : 30/40 (75.0%)   target >= 80%  -> FAIL
+      Ambiguity            1/6 (16.7%)
+      Hardware Fault       4/6 (66.7%)
+      Lease Expiry         4/4 (100.0%)
+      Route Closure        5/6 (83.3%)
+      Static Detour        6/8 (75.0%)
+      Transient Obstacle   10/10 (100.0%)
+
+----------------------------------------------------------------
+R5 ACCEPTANCE (Edge SLM >= 80%)  [REAL-model result]:
+  benchmark labels   : FAIL  (45.0%)
+  lease-scope rubric : FAIL  (60.0%)   <- the edge's actual decision scope
+NOTE: the Edge SLM ran the REAL model (ollama); this IS a real-model acceptance result.
+----------------------------------------------------------------

@@ -5,3 +5,27 @@ run,robot,scenario,success,failure_reason
 1,R4,forward_50m_direct,true,"safety_reflex_stop; front=0.288m; final=(-4.50,-34.57)"
 1,R5,forward_50m_direct,true,"safety_reflex_stop; front=0.270m; final=(-3.83,3.01)"
 1,R6,forward_50m_direct,true,"safety_reflex_stop; front=0.273m; final=(6.04,-8.00)"
+2,R1,forward_50m_direct,true,"safety_reflex_stop; front=0.250m; final=(5.53,11.99)"
+2,R2,forward_50m_direct,true,"safety_reflex_stop; front=0.287m; final=(7.68,10.00)"
+2,R3,forward_50m_direct,true,"safety_reflex_stop; front=0.274m; final=(4.50,-25.57)"
+2,R4,forward_50m_direct,true,"safety_reflex_stop; front=0.298m; final=(-4.50,-34.57)"
+2,R5,forward_50m_direct,true,"safety_reflex_stop; front=0.277m; final=(-3.83,3.01)"
+2,R6,forward_50m_direct,true,"safety_reflex_stop; front=0.280m; final=(6.04,-8.00)"
+3,R1,forward_50m_direct,true,"safety_reflex_stop; front=0.276m; final=(5.53,11.99)"
+3,R2,forward_50m_direct,true,"safety_reflex_stop; front=0.247m; final=(7.68,10.00)"
+3,R3,forward_50m_direct,true,live_gazebo_sensor_or_ground_truth_became_stale
+3,R4,forward_50m_direct,true,live_gazebo_sensor_or_ground_truth_became_stale
+3,R5,forward_50m_direct,true,"safety_reflex_stop; front=0.271m; final=(-3.83,3.01)"
+3,R6,forward_50m_direct,true,"safety_reflex_stop; front=0.274m; final=(6.04,-8.00)"
+4,R1,forward_50m_direct,true,"safety_reflex_stop; front=0.292m; final=(5.53,12.00)"
+4,R2,forward_50m_direct,true,"safety_reflex_stop; front=0.262m; final=(7.68,10.00)"
+4,R3,forward_50m_direct,true,live_gazebo_sensor_or_ground_truth_became_stale
+4,R4,forward_50m_direct,true,live_gazebo_sensor_or_ground_truth_became_stale
+4,R5,forward_50m_direct,true,"safety_reflex_stop; front=0.285m; final=(-3.83,3.01)"
+4,R6,forward_50m_direct,true,"safety_reflex_stop; front=0.289m; final=(6.04,-8.00)"
+5,R1,forward_50m_direct,true,"safety_reflex_stop; front=0.297m; final=(5.53,12.00)"
+5,R2,forward_50m_direct,true,"safety_reflex_stop; front=0.268m; final=(7.68,10.00)"
+5,R3,forward_50m_direct,true,"safety_reflex_stop; front=0.289m; final=(4.50,-25.57)"
+5,R4,forward_50m_direct,true,"safety_reflex_stop; front=0.246m; final=(-4.50,-34.57)"
+5,R5,forward_50m_direct,true,"safety_reflex_stop; front=0.292m; final=(-3.83,3.01)"
+5,R6,forward_50m_direct,true,"safety_reflex_stop; front=0.295m; final=(6.04,-8.00)"

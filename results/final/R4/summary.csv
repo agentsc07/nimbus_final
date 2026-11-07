@@ -1,0 +1,4 @@
+model,decisions,p50_warm_latency_s,p95_warm_latency_s,cold_start_latency_s,valid_json_pct,allowed_action_pct,tokens_per_second,peak_memory_mb,slm_decisions,rule_fallbacks,pass
+qwen2.5:0.5b,50,0.099639,0.121664,0.028782367706298828,100.0,100.0,396.977,7387,40,0,true
+qwen2.5:1.5b,50,0.132462,0.165560,0.023885011672973633,100.0,100.0,282.527,7387,40,0,true
+qwen2.5:3b,50,0.182554,0.189462,0.02476644515991211,100.0,100.0,168.026,7387,40,0,true
