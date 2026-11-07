@@ -1,5 +1,13 @@
 # T4: Blocked corridor; detour inside the lease zone
 
+- **Claim:** Blocked corridor; detour inside lease zone
+- **PRD pass bar:** C1 fastest; C2 stalls on a bad link (PRD Table 3)
+- **Measured:** C1: profile severe, outcome delivered, time-to-outcome (s) 8.398, obstacle decision latency (ms) 15.1, decided by SLM, deadline met; C2: profile severe, outcome STALLED -> escalated (relay could not resolve over the bad link), time-to-outcome (s) 5.22, obstacle decision latency (ms) 1711.1, decided by C2_RELAY, deadline FAIL; C3: profile severe, outcome delivered, time-to-outcome (s) 12.039, obstacle decision latency (ms) 1.5, decided by C3_FSM, deadline met
+- **Verdict:** per configuration (see Measured and the results table below)
+- **Source of numbers:** measured (see Scenario and Notes below)
+- **Command:** `./T4.sh`
+- **Commit:** 81d3b18, generated 2026-11-07T15:19:45Z
+
 - Trials: 3  |  generated 2026-11-07T15:19:45Z  |  commit 81d3b18
 - Pack: `packs/hospital_sim6_t2`  |  obstacle: `east_mid_hall`
 

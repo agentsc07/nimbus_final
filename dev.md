@@ -232,6 +232,19 @@ Start one supervisor per cluster with `python edge/run_supervisor.py --cluster e
 - **Scripts:** `scripts/validate_topology.py` checks every corridor against the walls in Gazebo; the launch scripts
   start one, two or six robots.
 
+### Gazebo in Docker
+
+```bash
+docker pull kautuk05/ds252-icc:gazebo_hospital_submitted
+```
+
+```bash
+docker run -it --privileged -v /tmp/.X11-unix:/tmp/.X11-unix:ro --env=DISPLAY=:1 --gpus=all --env="QT_X11_NO_MITSHM=1" -e XAUTHORITY=/run/user/1012/gdm/Xauthority -v /run/user/1012/gdm/Xauthority:/run/user/1012/gdm/Xauthority --device=/dev/dri:/dev/dri --network=host --ipc=host kautuk05/ds252-icc:gazebo_hospital_submitted
+```
+
+Fallback image: `kautuk05/ds252-icc:gazebo_hospital`. Display, user id and GPU flags are machine-specific; see the
+README, section 6.4, which also shows `scripts/docker_gazebo.sh` (mounts this repository and starts the whole stack).
+
 ### `lite/viewer.py`
 The Gazebo-less live view. Kinematic robots post their pose to it. Click a node to close it (an obstacle), or
 shift-click for an unclear obstacle that triggers `CLARIFY`.
@@ -372,7 +385,7 @@ be added. They can reuse `ResultDir` from `experiments/cloud/lib.py` so their fo
 
 ## Known issues
 
-- **19 failing tests on this branch.** They came in with the latest merges from `main` (navigation, map and topology changes).
+- **18 failing tests on this branch.** They came in with the latest merges from `main` (navigation, map and topology changes).
   The robot map dropped the corridor that ran through a wall into ward 3. This was correct for the robots, but ward
   3 (`south_room_approach`) is now unreachable in the robot map and in the `hospital_sim` pack, while
   `hospital_sim6/topology.json` still has the edge. The ward needs a route through its real doorway in
@@ -380,8 +393,8 @@ be added. They can reuse `ResultDir` from `experiments/cloud/lib.py` so their fo
 - **No turnaround yet.** The robot SDK refuses any goal behind the robot ("refusing an unsafe forward U-turn"), so
   the return leg of a trip, or a detour that needs the robot to turn back, is reported as `BLOCKED`. A three-point
   turn in `ground_robot_sdk/navigation.py`, checked against the occupancy map, would fix it.
-- **C2 relay.** The cloud's `POST /relay/decide` exists and the C9 experiment drives it, but the edge supervisor in
-  C2 mode still forwards events as `UNEXPECTED_EVENT` instead of calling it per step.
+- **C2 relay.** In C2 mode the edge supervisor asks the cloud through `POST /relay/decide` when a step is blocked
+  (`_relay_decide_to_cloud` in `edge/supervisor/supervisor.py`); it does not yet ask before every step.
 - **Deployed experiments.** The deployment is shared. Experiments default to a local cloud and never contain the
   deployment's address: to use it, set `NIMBUS_CLOUD_URL` (or pass `--target <url>`). The harness refuses to start
   while real edges are connected. An interrupted C8 run on 6 Nov left queued test tasks;

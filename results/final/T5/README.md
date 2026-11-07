@@ -1,5 +1,13 @@
 # T5: Gate closed -- cross-wing hand-over (real cloud)
 
+- **Claim:** Gate closed: cross-wing hand-over (real cloud)
+- **PRD pass bar:** C1 > C2 >> C3 (PRD Table 3)
+- **Measured:** C1: cloud deployed, outcome NOT delivered (queued), cross-wing yes, wing sequence -, decided by None, llm 1, completion (s) None, deadline FAIL; C2: cloud deployed, outcome NOT delivered (queued), cross-wing yes, wing sequence -, decided by None, llm 2, completion (s) None, deadline FAIL; C3: cloud local, outcome None, cross-wing no, wing sequence -, decided by None, llm None, completion (s) None, deadline FAIL
+- **Verdict:** per configuration (see Measured and the results table below)
+- **Source of numbers:** measured (see Scenario and Notes below)
+- **Command:** `./T5.sh`
+- **Commit:** a32c832, generated 2026-11-07T16:08:25Z
+
 - Trials: 3  |  generated 2026-11-07T16:08:25Z  |  commit a32c832
 - Closed corner: `east_south_hall_corner`
 

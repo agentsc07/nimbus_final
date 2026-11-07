@@ -1,5 +1,13 @@
 # T7: Inventory sweep -- survey idle pumps (WAN bandwidth)
 
+- **Claim:** Inventory sweep: survey idle pumps (WAN bandwidth)
+- **PRD pass bar:** C1 least WAN bandwidth (edge filters) (PRD Table 3)
+- **Measured:** C1: cloud deployed, places 3, report kind edge_filtered_digest, WAN bytes 148, bytes/place 49.3, survey status completed; C2: cloud deployed, places 3, report kind raw_observations, WAN bytes 12791, bytes/place 4263.7, survey status completed; C3: cloud local, places 3, report kind structured_counts, WAN bytes 322, bytes/place 107.3, survey status completed
+- **Verdict:** per configuration (see Measured and the results table below)
+- **Source of numbers:** measured (see Scenario and Notes below)
+- **Command:** `./T7.sh`
+- **Commit:** a32c832, generated 2026-11-07T16:24:12Z
+
 - Trials: 3  |  generated 2026-11-07T16:24:12Z  |  commit a32c832
 - Request: `Count the idle infusion pumps.`
 

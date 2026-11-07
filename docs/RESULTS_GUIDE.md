@@ -14,17 +14,20 @@ Use the experiment IDs from the plan:
 | C1 to C9 | Cloud |
 | R1 to R10 | Robot and edge |
 | N1 to N10 | Network and infrastructure |
+| T1 to T8 | Scenario tests across C1, C2 and C3 (experiment E3) |
 
 If you run the same experiment in more than one setting, add a short suffix: `R2_before`, `R2_after`,
-`N3_basement`, `C1_deployed`. The table sorts by group (C, R, N) and then by number.
+`N3_basement`, `C1_deployed`. The table sorts by group (C, R, N, T) and then by number. Every planned ID has a row;
+until its folder has a README the row says *to be filled*.
 
 ## 2. Put the code in the right place
 
 | Area | Code folder |
 | --- | --- |
 | Robot and edge | `experiments/robot_edge/` |
-| Network and infrastructure | `experiments/network_infra/` |
+| Network and infrastructure | `results/final/N<n>/run_n<n>.py` (shared helpers: `scripts/p4_shared.py`) |
 | Cloud | `experiments/cloud/` |
+| Scenario tests | `T<n>.sh` at the repository root (runners in `scripts/run_t<n>.py`) |
 
 One script per experiment, named after its ID, for example `experiments/robot_edge/r1_safety_stop.py`. Put the
 command that reproduces your result at the top of the script's docstring.

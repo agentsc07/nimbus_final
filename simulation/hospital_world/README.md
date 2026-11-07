@@ -43,6 +43,21 @@ Gazebo Fortress <-> /robot_N/{cmd_vel, odom, camera/image, ultrasonic/scan}
   needs an X11/Wayland socket, matching X authority, and a usable GPU/OpenGL
   driver. Headless camera/lidar mode uses `--headless-rendering`.
 
+### Docker image
+
+```bash
+docker pull kautuk05/ds252-icc:gazebo_hospital_submitted
+```
+
+(Fallback, the earlier image: `docker pull kautuk05/ds252-icc:gazebo_hospital`.) Run it with the GUI, GPU and host
+networking; replace `DISPLAY=:1` and `/run/user/1012` with your own display and user id:
+
+```bash
+docker run -it --privileged -v /tmp/.X11-unix:/tmp/.X11-unix:ro --env=DISPLAY=:1 --gpus=all --env="QT_X11_NO_MITSHM=1" -e XAUTHORITY=/run/user/1012/gdm/Xauthority -v /run/user/1012/gdm/Xauthority:/run/user/1012/gdm/Xauthority --device=/dev/dri:/dev/dri --network=host --ipc=host kautuk05/ds252-icc:gazebo_hospital_submitted
+```
+
+The repository README, section 6.4, has the full steps.
+
 ## Install from a fresh checkout
 
 ```bash

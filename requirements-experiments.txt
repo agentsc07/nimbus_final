@@ -1,0 +1,9 @@
+# Needed to rerun the experiments and draw their plots (results/final/). Not needed to run the system itself.
+# matplotlib is capped below 3.10: some plots use boxplot(labels=...), which newer releases removed.
+matplotlib>=3.8,<3.10
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+psutil>=5.9
+# Only for recording the N10 console videos (scripts/record_n10_videos.py), then: python -m playwright install chromium
+# playwright>=1.44
