@@ -1,69 +1,82 @@
-# Security Endpoint Matrix: Nimbus P4 API Authorization
+# Security Endpoint Matrix: Nimbus API Authorization
 
-**Scope:** Complete HTTP ingress surface implemented in `server.py` on AWS ECS Fargate (`nimbus-ds252-service`) and API Gateway (`qrgdidp9te`).  
-**Auth Implementation:** Fail-closed bearer token and `X-Nimbus-Token` validation (`server.py:_is_authorized`).  
-**Bypass Mechanism:** `NIMBUS_AUTH_DISABLED=1` strictly for local testing; fails closed when unset in production.
-
----
-
-## 1. Role Definitions and Token Hierarchies
-
-| Role | Environment Variable | Permissions & Scopes | Allowed Methods |
-| :--- | :--- | :--- | :--- |
-| **Public** | *None* | Unauthenticated static assets, UI landing pages, health checks, schemas, public pack info | `GET` |
-| **Requester** | `NIMBUS_REQUESTER_TOKEN` | Submit natural language requests, answer clarifications, inspect own task status | `GET`, `POST` |
-| **Operator** | `NIMBUS_OPERATOR_TOKEN` | Telemetry inspection, inventory adjustments, task controls (pause/cancel/replan), corridor reopen, memory reset | `GET`, `POST` |
-| **Edge** | `NIMBUS_EDGE_TOKEN` | Robot check-ins, edge escalations (`CLARIFY`, `UNEXPECTED_EVENT`, `OUTPUT_READY`), fleet heartbeats, relay decisions | `POST` |
-| **Admin / Fault** | `NIMBUS_ADMIN_TOKEN` / `NIMBUS_FAULT_TOKEN` | Network fault simulation injection, LLM outage simulation toggling | `GET`, `POST` |
-| **Master Superuser** | `NIMBUS_AUTH_TOKEN` | Universal fallback token for automated deployment pipelines and E2E harnesses | All |
+**Scope:** every HTTP route of `server.py` on this branch (the same code runs locally and in the ECS task).
+**Mechanism:** `server.py:_is_authorized`, a per-route role check on a bearer token, fail-closed.
+**Deployment caveat:** the image running in AWS (task definition `nimbus-ds252-app:12`, deployed 7 Nov 2026) predates this
+code and has no tokens configured; there, every route except `/fault` and `/llm/outage` was unauthenticated. This page
+describes the code, not that deployment (see `docs/aws-integration-audit.md`).
 
 ---
 
-## 2. Complete Endpoint Inventory & Authorization Matrix
+## 1. Roles and tokens
 
-| Endpoint Route | HTTP Method | Required Role | Auth Mechanism | Current Protection Status | Automated Test Reference |
-| :--- | :---: | :--- | :--- | :---: | :--- |
-| `/` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/app.js` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/operator` | `GET` | **Public** | Unauthenticated (UI Frame) | Allowed | `test_api.py::test_operator_page_served` |
-| `/operator.js` | `GET` | **Public** | Unauthenticated | Allowed | `test_api.py::test_operator_page_served` |
-| `/map` / `/map.html` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/map.json` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/pack` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/ui-config` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/health` | `GET` | **Public** | Unauthenticated | Allowed | `test_p4_security.py::test_public_routes_accessible_without_auth` |
-| `/schemas/{schema}` | `GET` | **Public** | Unauthenticated | Allowed | `test_api.py::test_schemas_served_over_http` |
-| `/tasks/{id}` | `GET` | **Requester / Operator** | Unauthenticated for single task status / Token permitted | Allowed (Read-only status) | `test_cloud_api.py::test_sc1_task_view_shows_spec_and_priority` |
-| `/tasks` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/fleet` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_token_authorization_and_role_separation` |
-| `/outbox` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/trace` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/notifications` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/cost` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/metrics` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/inventory` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/llm-status` | `GET` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/requests` | `POST` | **Requester** | `Bearer <NIMBUS_REQUESTER_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_token_authorization_and_role_separation` |
-| `/requests/{id}/answer` | `POST` | **Requester** | `Bearer <NIMBUS_REQUESTER_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_token_authorization_and_role_separation` |
-| `/tasks/{id}/control` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_token_authorization_and_role_separation` |
-| `/tasks/{id}/replan` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_token_authorization_and_role_separation` |
-| `/map/reopen` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/inventory/stock` / `/fleet/stock` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/inventory/reset` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/reset-memory` / `/memory/reset` | `POST` | **Operator** | `Bearer <NIMBUS_OPERATOR_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/checkins` | `POST` | **Edge** | `Bearer <NIMBUS_EDGE_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/escalations` | `POST` | **Edge** | `Bearer <NIMBUS_EDGE_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/fleet/heartbeat` | `POST` | **Edge** | `Bearer <NIMBUS_EDGE_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/relay/decide` | `POST` | **Edge** | `Bearer <NIMBUS_EDGE_TOKEN>` | Protected (401 on unset/invalid) | `test_p4_security.py::test_fail_closed_when_auth_enabled_and_tokens_unset` |
-| `/fault` | `GET`, `POST` | **Admin / Fault** | `Bearer <NIMBUS_ADMIN_TOKEN>` or `NIMBUS_DEMO_FAULTS=1` | Protected (403 on unauth) | `test_api.py::test_fault_endpoint_auth_guard` |
-| `/llm/outage` | `POST` | **Admin / Fault** | `Bearer <NIMBUS_ADMIN_TOKEN>` or `NIMBUS_DEMO_FAULTS=1` | Protected (403 on unauth) | `test_api.py::test_fault_endpoint_auth_guard` |
+A token is sent as `Authorization: Bearer <token>` (or `X-Nimbus-Token: <token>`) and compared with
+`hmac.compare_digest`.
 
----
+| Role | Accepted tokens (environment variables) |
+| :--- | :--- |
+| **Public** | none needed |
+| **Requester** | `NIMBUS_REQUESTER_TOKEN`, `NIMBUS_OPERATOR_TOKEN`, `NIMBUS_ADMIN_TOKEN`, master |
+| **Operator** | `NIMBUS_OPERATOR_TOKEN`, `NIMBUS_ADMIN_TOKEN`, master |
+| **Edge** | `NIMBUS_EDGE_TOKEN`, `NIMBUS_OPERATOR_TOKEN`, `NIMBUS_ADMIN_TOKEN`, master |
+| **Admin / fault** | `NIMBUS_ADMIN_TOKEN` or `NIMBUS_FAULT_TOKEN`, master; outside production also open to anyone when `NIMBUS_DEMO_FAULTS=1` |
+| master | `NIMBUS_AUTH_TOKEN` is accepted for every role |
 
-## 3. Security Properties & Hardening Details
+Fail-closed rules:
 
-1. **Fail-Closed Default (C1)**: If an authorization token for a role is unset in the environment, requests targeting that role receive HTTP 401 Unauthorized immediately. They never proceed with unauthenticated execution.
-2. **Timing Attack Protection**: Token evaluation uses `hmac.compare_digest` in `server.py` to prevent timing-based side-channel discovery of secret tokens.
-3. **Credential Non-Leakage**: Error responses strictly return generic sanitized error messages: `{"error": "unauthorized", "detail": "Missing authorization token"}`. Token hashes, internal system env keys, or secret substrings are never echoed in HTTP error payloads or access logs.
-4. **Direct Fargate vs API Gateway Protection**: Authentication is enforced directly inside the application container (`server.py`), guaranteeing that even if a request bypasses API Gateway and reaches the Fargate container directly over VPC, it is rejected with 401.
-5. **Payload Size Guard (Addendum 9)**: `server.py:_read_json` rejects any payload with `Content-Length > 10 MB` with `HTTP 400 Bad Request`, preventing memory exhaustion DOS attacks.
+- A role with **no token configured** answers 401 (`"token for role '<role>' is not configured"`), or 403 for the admin
+  routes. A missing token answers 401 (403 for admin routes); a wrong token answers 401.
+- `NIMBUS_AUTH_DISABLED=1` turns the check off **only outside production**; production is `NIMBUS_BACKEND=aws` or
+  `ENVIRONMENT=production`, where the flag is ignored with a warning. While the check is off, a browser POST/PUT whose
+  `Origin` header does not match `Host` is refused with 403, and the edge routes still require `NIMBUS_EDGE_TOKEN` if it
+  is set.
+- The same bypass applies under pytest (`PYTEST_CURRENT_TEST` set) unless `NIMBUS_TEST_AUTH_CHECK` is set, again only
+  outside production.
+- Any route not listed below is treated as operator-only before it can answer 404.
+
+## 2. Routes
+
+| Route | Method | Role |
+| :--- | :---: | :--- |
+| `/`, `/app.js`, `/operator`, `/operator.js`, `/map`, `/map.html` | GET | Public |
+| `/pack`, `/ui-config`, `/favicon.ico`, `/schemas/{name}` | GET | Public |
+| `/health` (returns `200 {"ok": true}`) | GET | Public |
+| `/requests` | POST | Requester |
+| `/requests/{task_id}/answer` | POST | Requester |
+| `/tasks`, `/tasks/{task_id}`, `/tasks/{task_id}/timeline` | GET | Requester |
+| `/tasks/{task_id}/trace`, `/trace` | GET | Operator |
+| `/map.json`, `/fleet`, `/notifications`, `/cost`, `/metrics`, `/inventory`, `/llm-status` | GET | Operator |
+| `/fault` (read-only status) | GET | Operator (also the admin/fault token) |
+| `/tasks/{task_id}/control`, `/tasks/{task_id}/replan` | POST | Operator |
+| `/map/reopen` | POST | Operator |
+| `/inventory/stock`, `/fleet/stock`, `/inventory/reset` | POST | Operator |
+| `/reset-memory`, `/memory/reset` | POST | Operator |
+| `/checkins`, `/escalations`, `/fleet/heartbeat`, `/relay/decide` | POST | Edge |
+| `/outbox` | GET | Edge |
+| `/results/upload-url` | POST | Edge |
+| `/results/upload/{task_id}/{name}` (local result store) | PUT | Edge |
+| `/fault` | POST | Admin / fault |
+| `/llm/outage` | POST | Admin / fault |
+
+## 3. Other properties
+
+1. **Request size:** JSON bodies over 1,000,000 bytes are rejected with 400. `PUT /results/upload/...` requires a
+   `Content-Length` (411 without one), refuses an empty body (400), a body over 10 MiB (413) and an upload for a task
+   that is already completed, cancelled or rejected (409).
+2. **Error bodies** carry a fixed message (`{"error": "unauthorized", "detail": ...}`); they name the role whose token
+   is missing but never a token value.
+3. **Direct access to the container:** the check runs inside `server.py`, so a request that reaches the container
+   without going through API Gateway still needs a token, provided the tokens are configured. Note that the live
+   security group allowed port 8000 from the internet and the live image had no tokens.
+4. **Bind address:** the server listens on `127.0.0.1` by default; `NIMBUS_BIND_HOST` overrides it, the Dockerfile sets
+   `0.0.0.0`, and production mode defaults to `0.0.0.0`.
+5. **MQTT and SQS ingest** (`NIMBUS_TRANSPORT=mqtt`, `NIMBUS_SQS_QUEUE_URL`) feed the same check-in and escalation
+   handlers without this HTTP check; they rely on the broker's and IAM's access control instead (the MQTT client has no
+   TLS or credentials, see `docs/aws-integration-audit.md` section 1).
+
+## 4. Tests
+
+`tests/test_p4_security.py` (`test_public_routes_accessible_without_auth`,
+`test_fail_closed_when_auth_enabled_and_tokens_unset`, `test_token_authorization_and_role_separation`) and
+`tests/test_api.py::test_fault_endpoint_auth_guard` cover the public routes, fail-closed behaviour, role separation and
+the admin routes. Not every route in the table has its own test.

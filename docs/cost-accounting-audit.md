@@ -1,60 +1,85 @@
 # Cost Accounting, Telemetry, and AWS Billing Audit
 
-**Target Cloud Environment:** AWS Account `930124786284` | Region `ap-south-1`  
-**Reference Components:** `cost.py`, `server.py` (`CostBook`), `cloud/llm.py`, `infra/terraform/main.tf`, `results/final/N9/`
+**Target cloud environment:** AWS account `930124786284`, region `ap-south-1`
+**Reference components:** `cost.py` (counters and `CostBook`), `server.py` (where counters are recorded),
+`results/final/N9/run_n9.py` (prices), `infra/terraform/*.tf`
+**Status:** corrected on 12 Nov 2026 (baseline arithmetic, resources Terraform defines, variable names, teardown).
+Prices below are the list prices the project used or AWS's published list prices for US East (N. Virginia); prices
+for `ap-south-1` were **not verified** and can differ.
 
 ---
 
-## 1. Runtime Cost Metering Methodology
+## 1. Runtime cost metering
 
-Project Nimbus tracks runtime resource consumption via `CostBook` in `server.py` and computes task delivery costs against published AWS pricing tariffs.
+`cost.py` records raw counters for each term of the PRD Sec. 7 formula and leaves prices symbolic:
 
-### 1.1 Itemized Cost Formula
-Per-task cost is computed under PRD Section 7 metrics:
+$$\text{Cost}_{\text{task}} = \frac{T_{in} p_{in} + T_{out} p_{out} + F p_{fargate} + M p_{iot} + W p_{ddb} + Q p_{sqs} + S p_{s3} + D p_{transfer} + G p_{apigw} + K p_{cw}}{N_{tasks}}$$
 
-$$\text{Cost}_{\text{task}} = \text{Cost}_{\text{Bedrock}} + \text{Cost}_{\text{Fargate}} + \text{Cost}_{\text{DynamoDB}} + \text{Cost}_{\text{APIGW}} + \text{Cost}_{\text{Transfer}}$$
+| Counter | What `server.py` records |
+| :--- | :--- |
+| `input_tokens`, `output_tokens`, `llm_calls` | from the model call (Bedrock `usage` when real; a length/4 estimate for the stand-ins) |
+| `fargate_gbs` (F) | wall-clock seconds between ticks x `NIMBUS_FARGATE_GB` (default 1); memory only, there is no vCPU counter |
+| `dynamodb_ops` (W) | a fixed count per state change and decision row, not measured read/write capacity units |
+| `apigw_requests` (G), `data_transfer_bytes` (D) | one request and the response size for **every** JSON response, including console polling (not separated) |
+| `iot_messages` (M), `sqs_messages` (Q), `s3_ops` (S), `cloudwatch_metrics` (K) | per publication, queued message, result upload and emitted metric |
 
-| Resource Component | Metered Metric | AWS Tariff (ap-south-1) | Accounting Mechanism |
-| :--- | :--- | :--- | :--- |
-| **Amazon Bedrock (Nova-Lite)** | Input / Output Tokens | Input: \$0.06 / 1M tokens<br>Output: \$0.24 / 1M tokens | Token counts extracted from `usage` block returned by Converse API in `cloud/llm.py`. Failed/circuit-broken calls incur \$0.00. |
-| **AWS ECS Fargate** | vCPU / GB Memory seconds | vCPU: \$0.04048 / hr<br>RAM: \$0.004445 / GB-hr | Computed across container allocation (0.5 vCPU, 1 GB RAM) divided by active task duration. |
-| **Amazon DynamoDB** | Write / Read Request Units | \$1.25 / 1M WRU<br>\$0.25 / 1M RRU | `server.py` increments counters for every `put_task`, `append_decision`, `get_task`, and `query_tasks`. |
-| **Amazon API Gateway** | HTTP API Requests | \$1.00 / 1M requests | Separated into **business task requests** (`POST /requests`, `POST /tasks/{id}/control`) and **background console polling** (`GET /tasks`, `GET /fleet`). |
-| **Data Transfer** | Egress Bytes | \$0.09 / GB (first 10 TB free) | Monitored in `server.py:record(data_transfer_bytes=...)`. |
-
----
-
-## 2. Infrastructure Spend vs Modelled Spend
-
-> [!IMPORTANT]
-> **Always-On Fargate & Observability Billing**:  
-> ECS Fargate runs continuously at `desiredCount=1` (512 CPU, 1024 MB RAM), accumulating baseline infrastructure charges of approximately **\$0.51 / day** regardless of whether tasks are active. Container Insights and CloudWatch Logs accumulate additional storage and ingestion fees.
->
-> If `var.budget_email` in Terraform is empty, automated AWS Budget threshold alert notifications are disabled. Teams must set `budget_email` in production to prevent unexpected overruns.
+The N9 evaluation (`results/final/N9/run_n9.py`) prices only the token and Fargate terms: Bedrock Nova Lite at
+$0.06 per 1M input and $0.24 per 1M output tokens, Fargate at $0.04048 per vCPU-hour and $0.004445 per GB-hour (0.5 vCPU,
+1 GB). Those are US East list prices.
 
 ---
 
-## 3. Safe Demo Teardown Checklist
+## 2. Always-on infrastructure (not per task)
 
-When destroying or pausing the environment after evaluation to prevent ongoing billing:
+What the Terraform on this branch would run with its defaults (`desired_count = 1`, `egress_mode = "public_ip"`):
 
-1. **Empty Amazon S3 Artifact Bucket**:
-   Non-empty S3 buckets will cause `terraform destroy` to fail with `BucketNotEmptyException`.
-   ```bash
-   aws s3 rm s3://nimbus-ds252-artifacts --recursive --region ap-south-1
-   ```
-2. **Delete ECR Images**:
-   Non-empty ECR repositories may block deletion unless `force_delete = true` is configured.
-   ```bash
-   aws ecr batch-delete-image --repository-name nimbus-app --image-ids imageTag=latest --region ap-south-1
-   ```
-3. **Scale ECS Service to Zero (Pause Mode)**:
-   If temporary pause is desired without destroying Terraform state:
+| Item | Defined in | Rate | Per day | Per 30 days |
+| :--- | :--- | :--- | ---: | ---: |
+| Fargate task, 0.5 vCPU + 1 GB | `main.tf` (`cpu = 512`, `memory = 1024`) | 0.5 x $0.04048 + 1 x $0.004445 = $0.024685/h | $0.59 | $17.77 |
+| Public IPv4 address on the task | `local.assign_public_ip` | $0.005/h | $0.12 | $3.60 |
+| Internal Application Load Balancer | `aws_lb.internal` | $0.0225/h + LCU-hours | $0.54 + LCU | $16.20 + LCU |
+| Secrets Manager secret | `aws_secretsmanager_secret.app_secrets` | $0.40/secret-month + $0.05 per 10,000 calls | ~$0.01 | $0.40 |
+| Container Insights | `aws_ecs_cluster.main` (`containerInsights = enabled`) | CloudWatch custom metrics + performance log ingestion | not measured | not measured |
+| CloudWatch Logs `/ecs/nimbus-ds252` (30-day retention), EMF metrics, the alarm | `main.tf` | ingestion, storage, custom metrics, one alarm | not measured | not measured |
+| **Total of the measured rows** | | | **~$1.26 + LCU** | **~$38 + LCU** |
+
+Not billed while idle: DynamoDB on-demand tables (per request, plus storage), API Gateway HTTP API (per request; AWS
+lists no separate hourly charge for an HTTP API VPC link, not verified on the bill), SQS (the consumer's 10 s long poll makes about 260,000 requests a
+month even when idle, inside the 1M-request monthly free tier), the EventBridge bus (no events are published), and the
+CloudFront distribution (disabled). There is no NAT gateway.
+
+The deployed stack differs (see `docs/aws-integration-audit.md`): it has no load balancer, and on 12 Nov 2026 both the
+C1 and C2 services were scaled to 0, so no Fargate or public-IP charges accrue until they are scaled up again.
+
+**Budget alerts:** `aws_budgets_budget.monthly` is created only when `alert_email` is set; it alerts at 50, 80 and 100 %
+of `budget_usd` (default 50 USD) of actual spend. With `alert_email` empty (the default) there are no budget alerts and
+no SNS notifications from the missed check-in alarm. There is no variable called `budget_email`.
+
+---
+
+## 3. Teardown
+
+1. **Pause without destroying:** scale the service to zero.
    ```bash
    aws ecs update-service --cluster nimbus-ds252-cluster --service nimbus-ds252-service --desired-count 0 --region ap-south-1
    ```
-4. **Terraform Destroy**:
-   Run full infrastructure teardown from `infra/terraform/`:
+   The next `terraform apply` sets it back to `desired_count = 1`. The missed check-in alarm on this branch treats the
+   missing metrics as breaching, so it goes into ALARM while the service is at zero.
+2. **Empty the S3 buckets** `nimbus-ds252-outputs` and `nimbus-ds252-static-app`: they have `force_destroy = false`, so
+   `terraform destroy` fails on a bucket that still holds objects. Versioning is off, so this is enough:
    ```bash
-   terraform -chdir=infra/terraform destroy -auto-approve
+   aws s3 rm s3://nimbus-ds252-outputs --recursive --region ap-south-1
+   aws s3 rm s3://nimbus-ds252-static-app --recursive --region ap-south-1
    ```
+3. **ECR:** `aws_ecr_repository.app` has `force_delete = true`, so `terraform destroy` deletes the `nimbus-app`
+   repository together with its images; no manual step is needed.
+4. **Destroy:** from the workstation that holds the state file (state is local, see
+   `docs/aws-integration-audit.md` section 9):
+   ```bash
+   terraform -chdir=infra/terraform destroy
+   ```
+   This permanently deletes the DynamoDB tables, including the decision log (point-in-time recovery is off), and the
+   app secret immediately (`recovery_window_in_days = 0`). Export anything you need first.
+5. **Resources Terraform does not manage** survive `destroy` and must be removed separately: the C2 stack
+   (`nimbus-ds252-c2-service`, API `nimbus-ds252-c2-api`, its task definition, security group, five tables and the
+   `nimbus-ds252-c2-escalations` queue).
