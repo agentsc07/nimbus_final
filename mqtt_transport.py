@@ -1,14 +1,20 @@
 """Switchable local MQTT transport for Nimbus.
 
-Supports the five canonical topics defined in contracts/topics.md:
+Supports the six canonical topics defined in contracts/topics.md:
   nimbus/{cluster_id}/lease       (cloud -> edge)
   nimbus/{cluster_id}/renewal     (cloud -> edge)
   nimbus/{cluster_id}/probe       (cloud -> edge)
+  nimbus/{cluster_id}/notice      (cloud -> edge)
   nimbus/{cluster_id}/escalation  (edge -> cloud)
   nimbus/{cluster_id}/checkin     (edge -> cloud)
 
 Can connect to a local broker (e.g. Mosquitto via paho-mqtt) or use an
 in-process stand-in broker when paho is missing or NIMBUS_MQTT_STANDIN=1 is set.
+The paho client connects in plaintext without credentials, so it suits a local
+Mosquitto only; AWS IoT Core (TLS + X.509) is not supported by this module.
+While disconnected, publishes wait in a bounded buffer (MAX_PENDING messages);
+when it is full the oldest message is dropped, counted in `dropped_messages`
+and logged as a warning.
 """
 
 from __future__ import annotations
@@ -76,8 +82,54 @@ class InMemoryBroker:
 
 _GLOBAL_STANDIN_BROKER = InMemoryBroker()
 
+MAX_PENDING = 500  # messages buffered while disconnected; beyond this the oldest is dropped
 
-class StandinMQTTClient:
+
+class _OfflineBuffer:
+    """Bounded, ordered buffer for messages published while the client is disconnected."""
+
+    connected: bool
+
+    def _init_buffer(self) -> None:
+        self._pending_messages: list[tuple[str, bytes]] = []
+        self._pending_lock = threading.Lock()
+        self.dropped_messages = 0  # buffered messages evicted because the buffer was full
+
+    def _buffer_if_offline(self, topic: str, raw: bytes, force: bool = False) -> bool:
+        """Buffer the message when disconnected (or when `force`); False means the caller should send it now."""
+        evicted = None
+        with self._pending_lock:
+            if self.connected and not force:
+                return False
+            if len(self._pending_messages) >= MAX_PENDING:
+                evicted = self._pending_messages.pop(0)
+                self.dropped_messages += 1
+            self._pending_messages.append((topic, raw))
+            depth, dropped = len(self._pending_messages), self.dropped_messages
+        if evicted is not None:
+            logger.warning("MQTT offline buffer full (%d); dropped the oldest message, for %s (%d dropped so far)",
+                           MAX_PENDING, evicted[0], dropped)
+        logger.info("MQTT disconnected; buffered message for %s (pending: %d)", topic, depth)
+        return True
+
+    def _flush_then_mark_connected(self, send: Callable[[str, bytes], None]) -> None:
+        """Send the buffer in order, then mark the client connected. Messages published while the buffer is being
+        sent are buffered behind it and go out in the next round, so a new message never overtakes an older one."""
+        while True:
+            with self._pending_lock:
+                batch = list(self._pending_messages)
+                self._pending_messages.clear()
+                if not batch:
+                    self.connected = True
+                    return
+            for topic, raw in batch:
+                try:
+                    send(topic, raw)
+                except Exception as exc:
+                    logger.warning("Error flushing pending message to %s: %s", topic, exc)
+
+
+class StandinMQTTClient(_OfflineBuffer):
     """Client backed by the in-memory broker."""
 
     def __init__(self, broker: InMemoryBroker | None = None):
@@ -86,8 +138,7 @@ class StandinMQTTClient:
         self._subs_lock = threading.Lock()
         self._running = False
         self.connected = True
-        self._pending_messages: list[tuple[str, bytes]] = []
-        self._pending_lock = threading.Lock()
+        self._init_buffer()
 
     def subscribe(self, pattern: str, handler: Callable[[str, dict], None]) -> None:
         with self._subs_lock:
@@ -114,12 +165,7 @@ class StandinMQTTClient:
         else:
             raw = payload
 
-        if not self.connected:
-            with self._pending_lock:
-                if len(self._pending_messages) >= 500:
-                    self._pending_messages.pop(0)
-                self._pending_messages.append((topic, raw))
-            logger.info("Standin broker disconnected; buffered message for %s (total: %d)", topic, len(self._pending_messages))
+        if self._buffer_if_offline(topic, raw):
             return
 
         self.broker.publish(topic, raw)
@@ -129,13 +175,8 @@ class StandinMQTTClient:
         self.connected = False
 
     def reconnect_broker(self) -> None:
-        """Simulate broker reconnection and flush buffered messages."""
-        self.connected = True
-        with self._pending_lock:
-            pending = list(self._pending_messages)
-            self._pending_messages.clear()
-        for topic, raw in pending:
-            self.broker.publish(topic, raw)
+        """Simulate broker reconnection and flush buffered messages (oldest first)."""
+        self._flush_then_mark_connected(self.broker.publish)
 
     def start(self) -> None:
         if self._running:
@@ -148,7 +189,7 @@ class StandinMQTTClient:
         self._running = False
 
 
-class PahoMQTTClient:
+class PahoMQTTClient(_OfflineBuffer):
     """Client wrapping paho-mqtt for connection to real local Mosquitto."""
 
     def __init__(self, host: str = "localhost", port: int = 1883):
@@ -163,8 +204,7 @@ class PahoMQTTClient:
 
         self._handlers: list[tuple[str, Callable[[str, dict], None]]] = []
         self._handlers_lock = threading.Lock()
-        self._pending_messages: list[tuple[str, bytes]] = []
-        self._pending_lock = threading.Lock()
+        self._init_buffer()
         self._stopping = False
         self._reconnect_thread: threading.Thread | None = None
 
@@ -176,7 +216,6 @@ class PahoMQTTClient:
     def _on_connect(self, client, userdata, flags, rc, properties=None) -> None:
         is_ok = (rc == 0) if isinstance(rc, int) else (not getattr(rc, "is_failure", True))
         if is_ok:
-            self.connected = True
             logger.info("Connected to MQTT broker at %s:%s", self.host, self.port)
             with self._handlers_lock:
                 for pattern, _ in self._handlers:
@@ -185,15 +224,8 @@ class PahoMQTTClient:
                     except Exception as e:
                         logger.warning("Failed subscribing to %s: %s", pattern, e)
 
-            # Flush buffered pending messages upon reconnection
-            with self._pending_lock:
-                pending = list(self._pending_messages)
-                self._pending_messages.clear()
-            for topic, raw in pending:
-                try:
-                    self._client.publish(topic, raw, qos=1)
-                except Exception as exc:
-                    logger.warning("Error flushing pending message to %s: %s", topic, exc)
+            # Flush the messages buffered while disconnected, oldest first, before new publishes go out directly.
+            self._flush_then_mark_connected(lambda topic, raw: self._client.publish(topic, raw, qos=1))
 
     def _on_disconnect(self, client, userdata, rc, properties=None) -> None:
         self.connected = False
@@ -235,22 +267,14 @@ class PahoMQTTClient:
         else:
             raw = payload
 
-        if not self.connected:
-            with self._pending_lock:
-                if len(self._pending_messages) >= 500:
-                    self._pending_messages.pop(0)  # Bounded queue
-                self._pending_messages.append((topic, raw))
-            logger.info("MQTT disconnected; buffered message on %s (pending: %d)", topic, len(self._pending_messages))
+        if self._buffer_if_offline(topic, raw):
             return
 
         try:
             self._client.publish(topic, raw, qos=1)
         except Exception as exc:
             logger.warning("Failed to publish to MQTT topic %s: %s; buffering", topic, exc)
-            with self._pending_lock:
-                if len(self._pending_messages) >= 500:
-                    self._pending_messages.pop(0)
-                self._pending_messages.append((topic, raw))
+            self._buffer_if_offline(topic, raw, force=True)
 
     def start(self) -> None:
         self._stopping = False
@@ -277,8 +301,7 @@ class PahoMQTTClient:
                 try:
                     self._client.connect(self.host, self.port, 60)
                     self._client.loop_start()
-                    self.connected = True
-                    break
+                    break  # _on_connect flushes the buffer and then sets connected
                 except Exception:
                     delay = min(10.0, delay * 1.5)
         self._reconnect_thread = threading.Thread(target=_loop, daemon=True, name="MQTT-Reconnect")
@@ -312,7 +335,10 @@ class MQTTTransport:
             try:
                 self.client = PahoMQTTClient(host=host, port=port)
             except Exception as e:
-                logger.info("paho-mqtt unavailable or failed to initialize (%s); using in-process stand-in", e)
+                # A broker was asked for (the stand-in was not forced), so falling back is a misconfiguration:
+                # nothing published from here reaches the broker or any other process.
+                logger.warning("MQTT broker %s:%s requested but paho-mqtt is unavailable or failed to initialize (%s); "
+                               "using the in-process stand-in broker, so no message leaves this process", host, port, e)
                 self.is_standin = True
                 self.client = StandinMQTTClient(broker=broker)
         else:

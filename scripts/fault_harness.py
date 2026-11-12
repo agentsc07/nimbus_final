@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 from dataclasses import dataclass, field
 import logging
 import os
@@ -50,10 +51,14 @@ class FaultProfile:
     """Configuration for simulated network degradation.
 
     Semantics note (H10):
-    In user-space proxy mode, simulated packet loss operates at the TCP
-    connection level by aborting/closing the connection upfront. It does
-    NOT simulate kernel-level mid-stream IP packet drops; for true kernel IP
-    packet drops, use Linux tc/netem via `--tc-script`.
+    In user-space proxy mode, `loss_rate` is the probability that a new TCP
+    connection is aborted when it is accepted (a connect-time abort). Data on
+    a connection that was let through is never dropped. It does NOT simulate
+    kernel-level mid-stream IP packet drops; for those, use Linux tc/netem via
+    `--tc-script`. `latency_ms` (+/- jitter) is added in each direction of a
+    proxied connection, so a request/response round trip gains about twice
+    the value. `disconnected` closes new connections at once (fail fast); it
+    does not blackhole them.
     """
 
     name: str = "custom"
@@ -101,7 +106,7 @@ class FaultProfile:
         return delay_ms / 1000.0
 
     def should_drop(self) -> bool:
-        """Determine if a connection or packet chunk should be dropped."""
+        """Decide whether to abort a new connection at connect time (always when disconnected)."""
         if self.disconnected:
             return True
         if self.loss_rate <= 0.0:
@@ -223,8 +228,15 @@ class FaultProxy:
         self._active_sockets: set[socket.socket] = set()
         self.generation: int = 0
 
-        # Telemetry metrics for experiment evaluation
-        # Note: packets_dropped reflects upfront connection aborts in proxy mode
+        # Telemetry counters for experiment evaluation. The key names are a wire contract (POST /fault, the operator
+        # console, scripts/run_t4.py), so they keep their historical names; what each one counts:
+        #   connections_total     connections accepted by the proxy
+        #   connections_rejected  connections closed without being proxied: partition (disconnected), connect-time
+        #                         loss aborts, and failures to reach the target
+        #   connections_aborted   connect-time loss aborts only (FaultProfile.should_drop)
+        #   packets_dropped       the same connect-time aborts; NOT IP packets, no data is ever dropped mid-stream
+        #   packets_forwarded     recv() chunks (up to 64 KB each) relayed in either direction; NOT IP packets
+        #   bytes_forwarded       bytes relayed in either direction
         self.stats = {
             "connections_total": 0,
             "connections_rejected": 0,
@@ -651,22 +663,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
-    # Resolve profile
+    # Resolve profile. Command-line overrides build a new profile with dataclasses.replace(), which re-runs
+    # __post_init__ (so the values are validated) and never mutates the shared PRESET_PROFILES entries.
     if args.profile:
-        profile = PRESET_PROFILES[args.profile]
+        profile = dataclasses.replace(PRESET_PROFILES[args.profile])
     else:
         profile = FaultProfile.from_env()
 
+    overrides: dict[str, Any] = {}
     if args.latency is not None:
-        profile.latency_ms = args.latency
+        overrides["latency_ms"] = args.latency
     if args.jitter is not None:
-        profile.jitter_ms = args.jitter
+        overrides["jitter_ms"] = args.jitter
     if args.loss is not None:
-        profile.loss_rate = args.loss
+        overrides["loss_rate"] = args.loss
     if args.disconnected:
-        profile.disconnected = True
+        overrides["disconnected"] = True
     if args.trace:
-        profile.trace_file = args.trace
+        overrides["trace_file"] = args.trace
+    if overrides:
+        # A fresh fault_id, and fault_class recomputed from the new settings.
+        profile = dataclasses.replace(profile, fault_id="", fault_class="custom", **overrides)
 
     # Handle Linux tc/netem commands
     if args.tc_clear:
@@ -737,9 +754,10 @@ def main(argv: list[str] | None = None) -> int:
             replayer.stop()
         proxy.stop()
         print(
-            f"Fault Proxy stopped.\nStats: {proxy.stats['packets_forwarded']} packets forwarded, "
-            f"{proxy.stats['connections_aborted']} connections aborted, "
-            f"{proxy.stats['connections_total']} total connections ({proxy.stats['connections_rejected']} rejected)."
+            f"Fault Proxy stopped.\nStats: {proxy.stats['packets_forwarded']} chunks forwarded "
+            f"({proxy.stats['bytes_forwarded']} bytes), "
+            f"{proxy.stats['connections_aborted']} connections aborted at connect time (loss), "
+            f"{proxy.stats['connections_total']} total connections ({proxy.stats['connections_rejected']} not proxied)."
         )
 
     return 0

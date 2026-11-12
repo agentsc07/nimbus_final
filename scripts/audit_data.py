@@ -4,7 +4,10 @@
 
 Passes when: every dataset in evaluation/manifest.json is declared synthetic, or is a network measurement that says it holds no
 personal data; every file under evaluation/ and traces/ is listed in the manifest; no listed file contains anything that looks like
-personal data (e-mail address, phone number, national-id or medical-record-number pattern, date of birth).
+personal data: e-mail address; phone number (US style, or Indian: +91 / 0091 / 0 prefix or a bare 10-digit number starting
+with 6-9); national id (US SSN, Aadhaar written in groups of four); medical record number (MRN, UHID, hospital/patient id,
+14-digit ABHA number); a patient name ("patient Ravi Kumar", "patient: Mrs. Rao", a simple capitalised-name heuristic);
+date of birth. The patterns are heuristics: a pass means none of them matched, not that a file is free of personal data.
 """
 
 from __future__ import annotations
@@ -16,11 +19,19 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Capitalised words that commonly follow "patient" in the synthetic hospital requests but are not names.
+_NOT_NAMES = ("Monitor|Monitors|Transport|Transfer|Lift|Bed|Beds|Room|Ward|Care|Zone|Area|Corridor|Trolley|Gurney|"
+              "Wheelchair|Records|Record|Services|Service|Safety|Flow|Unit|Admission|Discharge|Id|ID|No|Number")
 PII = {
     "e-mail address": re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
     "phone number": re.compile(r"(?<!\d)(?:\+?\d{1,3}[ -])?(?:\(?\d{3}\)?[ -]?)\d{3}[ -]\d{4}(?!\d)"),
-    "national id": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    "medical record number": re.compile(r"(?i)\b(?:mrn|medical record(?: number)?)\s*[:#]?\s*\d{4,}"),
+    "Indian phone number": re.compile(r"(?<![\w.+-])(?:(?:\+91|0091)[ -]?|0)?[6-9]\d{4}[ -]?\d{5}(?![\w.])"),
+    "national id": re.compile(r"\b\d{3}-\d{2}-\d{4}\b|\b[2-9]\d{3}[ -]\d{4}[ -]\d{4}\b"),
+    "medical record number": re.compile(
+        r"(?i)\b(?:mrn|uhid|medical record(?: number| no\.?)?|hospital (?:no\.?|number|id)|patient id)\s*[:#.-]?\s*[a-z]{0,4}[-/]?\d{4,}"
+        r"|\b\d{2}-\d{4}-\d{4}-\d{4}\b"),
+    "patient name": re.compile(r"\b[Pp]atient(?:'s)?(?:\s+name)?\s*[:=-]?\s+(?:(?:Mr|Mrs|Ms|Dr|Shri|Smt)\.?\s+)?"
+                               rf"(?!(?:{_NOT_NAMES})\b)[A-Z][a-z]{{2,}}(?:\s+[A-Z][a-z]{{2,}})?\b"),
     "date of birth": re.compile(r"(?i)\b(?:dob|date of birth)\b"),
 }
 
@@ -42,7 +53,7 @@ def audit(root: Path = ROOT) -> list[str]:
             problems.append(f"{d['path']}: listed but not found")
     for base in ("evaluation", "traces"):
         for f in sorted((root / base).rglob("*")) if (root / base).exists() else []:
-            rel = str(f.relative_to(root))
+            rel = f.relative_to(root).as_posix()        # manifest paths use '/', also on Windows
             if f.is_file() and rel not in listed and f.name != "manifest.json":
                 problems.append(f"{rel}: not listed in the manifest")
     for path in sorted(listed):
