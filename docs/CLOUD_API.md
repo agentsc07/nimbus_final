@@ -21,7 +21,7 @@ reachable identically whether you hit `http://127.0.0.1:8000` or the deployed
 | --- | --- |
 | **Idempotency** | Every write carries a `message_id`. A replayed id returns `200 {"duplicate": true}` and has no second effect (PRD FR-8). |
 | **Version fencing** | Any edge message quoting a lease older than the current one gets `409 {"error":"outdated lease_version","current":N}`. |
-| **Auth** | Optional bearer token, off by default. When `NIMBUS_ADMIN_TOKEN`/edge token is set, the edge paths (`/checkins`, `/escalations`, `/fleet/heartbeat`, `/outbox`, `/relay/decide`) require `Authorization: Bearer <token>`. |
+| **Auth** | Fail-closed bearer token per role: `Authorization: Bearer <token>` (or `X-Nimbus-Token`). Public: `GET /`, `/app.js`, `/operator`, `/operator.js`, `/map`, `/map.html`, `/pack`, `/ui-config`, `/health`, `/favicon.ico`, `/schemas/*`. Requester (`NIMBUS_REQUESTER_TOKEN`, or operator/admin/master): `POST /requests`, `POST /requests/{id}/answer`, `GET /tasks`, `/tasks/{id}`, `/tasks/{id}/timeline`. Edge (`NIMBUS_EDGE_TOKEN`, or operator/admin/master): `/checkins`, `/escalations`, `/fleet/heartbeat`, `/relay/decide`, `GET /outbox`, `POST /results/upload-url`, `PUT /results/upload/{task_id}/{name}`. Admin (`NIMBUS_ADMIN_TOKEN`/`NIMBUS_FAULT_TOKEN` or master): `POST /fault`, `POST /llm/outage`. Everything else needs the operator token (`NIMBUS_OPERATOR_TOKEN`, admin or master). A role with no token configured answers 401 (403 for admin routes). `NIMBUS_AUTH_DISABLED=1` switches the check off only outside production (`NIMBUS_BACKEND=aws` / `ENVIRONMENT=production`). Full table: [security-endpoint-matrix.md](security-endpoint-matrix.md). |
 | **Errors** | `400` bad/missing fields (body lists the offending paths), `404` unknown task/cluster, `409` stale version / wrong state / wrong mode, `500` invalid lease produced. |
 | **Mode** | The service runs in exactly one of `C1`/`C2`/`C3`, fixed at startup by `NIMBUS_MODE`. Some endpoints are mode-gated (noted below). |
 
@@ -149,6 +149,13 @@ Errors: `409` (`relay decisions exist only in C2…`), `409` stale version, `404
 Output: `{ "outbox": [ { "topic": "nimbus/<cluster>/<kind>", "payload": { … } } ] }`.
 `active=1` omits leases for already-finished tasks (stop leases always kept).
 
+### `POST /results/upload-url`, then `PUT` — result files
+Input: `{ "task_id": "task-000001", "name": "photo-1.jpg", "content_type": "image/jpeg" }`.
+Output `201`: `{ "method": "PUT", "url", "ref", "headers", "max_bytes" }`. In the cloud `url` is a presigned S3 URL; locally it
+is `PUT /results/upload/{task_id}/{name}` on this server, which needs the edge token, a `Content-Length` (`411` without),
+a non-empty body (`400`), at most 10 MiB (`413`), and a task that is not already finished (`409`). Details:
+`contracts/topics.md`.
+
 ---
 
 ## 3. Cloud → edge messages (the `payload`s inside `/outbox`)
@@ -166,6 +173,7 @@ Output: `{ "outbox": [ { "topic": "nimbus/<cluster>/<kind>", "payload": { … } 
 
 | Route | I/O |
 | --- | --- |
+| `GET /health` | `200 { "ok": true }` — liveness for load balancers and probes; public, touches no state |
 | `GET /fleet` | `{ fleet[], places[], mode:"C1\|C2\|C3", llm:"<model id>", pack:"<id>" }` — quickest way to confirm a deployment's mode + LLM backend |
 | `GET /metrics` | counters + `gauges{queue_depth, live_leases, clusters{…health}}` + latency p50/p95 (NFR-1) |
 | `GET /cost` | per-task cost-formula counters (tokens, Fargate, IoT, DDB, SQS, S3, transfer, API GW, CW) |
@@ -176,6 +184,7 @@ Output: `{ "outbox": [ { "topic": "nimbus/<cluster>/<kind>", "payload": { … } 
 | `GET /llm-status` | `{ model, bedrock_configured, circuit_breaker, fault_down }` |
 | `GET /trace` | recent cross-component message trace (`?after=<seq>`) |
 | `GET /schemas/<name>` | the published JSON Schemas |
+| `GET /fault` · `POST /fault` | link-fault status shown in the console (operator token for `GET`) · set by `scripts/fault_harness.py` (admin token) |
 | `POST /llm/outage` | `{ "seconds": N }` → `201 {model_down, seconds}` (E5: force the model unavailable; rules take over, FR-18) |
 | `POST /map/reopen` | `{ "node": "…" }` → `201 {reopened}` |
 | `POST /fleet/stock` · `POST /inventory/stock` · `POST /inventory/reset` · `POST /reset-memory` | admin/demo state resets |

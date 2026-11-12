@@ -35,6 +35,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 _STATE_LOCK = threading.RLock()
 _IN_FLIGHT_MESSAGES: dict[str, float] = {}
+_ANSWERING_TASKS: set[str] = set()   # tasks whose clarification answer is being processed (one answer at a time)
 _IN_FLIGHT_TIMEOUT = 120.0  # seconds before stuck reservation is evicted
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB maximum request body size
 
@@ -233,6 +234,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
         # G: one API Gateway request; D: response bytes crossing the wire.
@@ -278,12 +281,27 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routes ----------------------------------------------------------
 
+    def _same_origin(self) -> bool:
+        """True unless a browser says this request comes from another site (Origin header not matching Host).
+        Non-browser clients (edges, scripts, tests) send no Origin and are unaffected."""
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        host = (self.headers.get("Host") or "").strip().lower()
+        try:
+            netloc = urlparse(origin).netloc.lower()
+        except ValueError:
+            return False
+        return bool(netloc) and netloc == host
+
     def _is_authorized(self, path: str, method: str) -> bool:
         """C1 & Addendum 1: Fail-closed HTTP authentication and authorization.
 
-        Bypassed only when NIMBUS_AUTH_DISABLED=1 (for tests/local dev).
-        Public routes (/, /app.js, /operator, /map, /pack, /health, /schemas/*)
-        remain accessible without authentication.
+        Bypassed only when NIMBUS_AUTH_DISABLED=1 outside production (tests/local dev); in that mode cross-origin
+        browser writes are still refused, so a web page cannot drive a local demo server (CSRF).
+        Public routes (/, /app.js, /operator, /map, /pack, /ui-config, /health, /schemas/*) need no token.
+        Task data is never public: /tasks, /tasks/{id} and /tasks/{id}/timeline need a requester (or operator)
+        token, and /map.json (every task, lease and notice) needs an operator token.
         """
         is_production = os.environ.get("NIMBUS_BACKEND") == "aws" or os.environ.get("ENVIRONMENT") == "production"
         auth_disabled = os.environ.get("NIMBUS_AUTH_DISABLED", "0").lower() in ("1", "true", "yes")
@@ -297,6 +315,9 @@ class Handler(BaseHTTPRequestHandler):
             if edge_token and path in EDGE_PATHS:
                 pass
             else:
+                if method in ("POST", "PUT") and not self._same_origin():
+                    self._send_json(403, {"error": "cross-origin request refused (authentication is disabled on this server)"})
+                    return False
                 return True
 
         # Public endpoints that do not require auth
@@ -308,12 +329,11 @@ class Handler(BaseHTTPRequestHandler):
                 "/operator.js",
                 "/map",
                 "/map.html",
-                "/map.json",
                 "/pack",
                 "/ui-config",
                 "/health",
                 "/favicon.ico",
-            ) or path.startswith("/schemas/") or (path.startswith("/tasks/") and len(path.split("/")) == 3):
+            ) or path.startswith("/schemas/"):
                 return True
 
         # Extract token from Authorization header or X-Nimbus-Token
@@ -324,20 +344,19 @@ class Handler(BaseHTTPRequestHandler):
         elif "X-Nimbus-Token" in self.headers:
             token = self.headers.get("X-Nimbus-Token", "").strip()
 
-        # Determine required role
+        # Determine required role. Everything not listed is operator-only (fail closed), including /map.json,
+        # /tasks/{id}/trace, /fleet, /notifications, /inventory, /cost, /metrics, /llm-status and GET /fault.
+        segments = path.split("/")
         role = "operator"
-        if path in ("/checkins", "/escalations", "/fleet/heartbeat", "/relay/decide", "/outbox"):
-            role = "edge"
+        if path in ("/checkins", "/escalations", "/fleet/heartbeat", "/relay/decide", "/outbox", "/results/upload-url"):
+            role = "edge"      # do_PUT authorises /results/upload/{task}/{name} as /results/upload-url
         elif path in ("/fault", "/llm/outage"):
-            role = "admin"
+            role = "admin"     # GET /fault (read-only status for the console) also accepts the operator token
         elif path == "/requests" or (path.startswith("/requests/") and path.endswith("/answer")):
             role = "requester"
-        elif path.startswith("/tasks/") and (path.endswith("/control") or path.endswith("/replan")):
-            role = "operator"
-        elif path in ("/map/reopen", "/inventory/stock", "/fleet/stock", "/inventory/reset", "/reset-memory", "/memory/reset"):
-            role = "operator"
-        elif path in ("/tasks", "/fleet", "/trace", "/notifications", "/cost", "/metrics", "/inventory", "/llm-status"):
-            role = "operator"
+        elif method == "GET" and (path == "/tasks" or (segments[1:2] == ["tasks"] and (
+                len(segments) == 3 or (len(segments) == 4 and segments[3] == "timeline")))):
+            role = "requester"  # the requester app lists tasks and shows status, question, result and timeline
 
         # Check token configurations
         master_token = os.environ.get("NIMBUS_AUTH_TOKEN")
@@ -348,17 +367,23 @@ class Handler(BaseHTTPRequestHandler):
         if role == "edge":
             edge_tok = os.environ.get("NIMBUS_EDGE_TOKEN")
             op_tok = os.environ.get("NIMBUS_OPERATOR_TOKEN")
+            adm_tok = os.environ.get("NIMBUS_ADMIN_TOKEN")
             if edge_tok:
                 role_tokens.append(edge_tok)
             if op_tok:
                 role_tokens.append(op_tok)
+            if adm_tok:
+                role_tokens.append(adm_tok)
         elif role == "requester":
             req_tok = os.environ.get("NIMBUS_REQUESTER_TOKEN")
             op_tok = os.environ.get("NIMBUS_OPERATOR_TOKEN")
+            adm_tok = os.environ.get("NIMBUS_ADMIN_TOKEN")
             if req_tok:
                 role_tokens.append(req_tok)
             if op_tok:
                 role_tokens.append(op_tok)
+            if adm_tok:
+                role_tokens.append(adm_tok)
         elif role == "operator":
             op_tok = os.environ.get("NIMBUS_OPERATOR_TOKEN")
             adm_tok = os.environ.get("NIMBUS_ADMIN_TOKEN")
@@ -370,19 +395,22 @@ class Handler(BaseHTTPRequestHandler):
             adm_tok = os.environ.get("NIMBUS_ADMIN_TOKEN") or os.environ.get("NIMBUS_FAULT_TOKEN")
             if adm_tok:
                 role_tokens.append(adm_tok)
+            op_tok = os.environ.get("NIMBUS_OPERATOR_TOKEN")
+            if path == "/fault" and method == "GET" and op_tok:
+                role_tokens.append(op_tok)
             if not is_production and os.environ.get("NIMBUS_DEMO_FAULTS", "0").lower() in ("1", "true", "yes"):
                 return True
 
         # Fail closed if no token configured for this role
         if not role_tokens:
-            if path in ("/fault", "/llm/outage"):
+            if role == "admin":
                 self._send_json(403, {"error": f"{path} is protected; enable with NIMBUS_DEMO_FAULTS=1 or provide Bearer authorization"})
             else:
                 self._send_json(401, {"error": "unauthorized", "detail": f"Authentication fail-closed: token for role '{role}' is not configured"})
             return False
 
         if not token:
-            if path in ("/fault", "/llm/outage"):
+            if role == "admin":
                 self._send_json(403, {"error": f"{path} is protected; enable with NIMBUS_DEMO_FAULTS=1 or provide Bearer authorization"})
             else:
                 self._send_json(401, {"error": "unauthorized", "detail": "Missing authorization token"})
@@ -409,11 +437,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/":
             self._send_static("index.html")
+        elif path == "/health":            # liveness for the ALB target group and readiness probes; no state, no token
+            self._send_json(200, {"ok": True})
         elif path == "/app.js":
             self._send_static("app.js")
         elif path == "/operator":
             self._send_static("operator.html")
-        elif path == "/map":
+        elif path in ("/map", "/map.html"):
             self._send_static("map.html")
         elif path == "/map.json":
             from cloud import mapview
@@ -564,6 +594,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", allowed[filename])
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(data)
 
@@ -632,7 +665,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 with _STATE_LOCK:
                     self.orch.mapstate.clear(node)
-                    self._drain()    # work that was waiting on the closure may now be placed
+                self._drain()    # work that was waiting on the closure may now be placed (planning outside the lock)
                 self._send_json(201, {"reopened": node})
         elif path == "/relay/decide":
             self._post_relay_decide(body)
@@ -783,7 +816,18 @@ class Handler(BaseHTTPRequestHandler):
         if dup:
             return
 
+        claimed = False
         try:
+            # One answer per question: two answers with different message_ids must not both plan and lease
+            # (check and claim atomically; the first answer's planning runs outside the lock).
+            with _STATE_LOCK:
+                fresh = self.store.get_task(task_id) or task
+                if fresh["status"] != "needs_clarification" or task_id in _ANSWERING_TASKS:
+                    self._send_json(409, {"error": f"task {task_id} is not awaiting an answer", "status": fresh["status"]})
+                    return
+                _ANSWERING_TASKS.add(task_id)
+                claimed = True
+                task = fresh
             if task.get("edge_question"):   # the edge asked (CLARIFY) and the cloud passed it on: relay the answer back
                 self._relay_edge_answer(task, text, message_id)
                 return
@@ -806,6 +850,8 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             with _STATE_LOCK:
                 _IN_FLIGHT_MESSAGES.pop(message_id, None)
+                if claimed:
+                    _ANSWERING_TASKS.discard(task_id)
 
     def _post_escalation(self, body: dict):
         """Ingress for edge escalations (PRD Table 2; Person 3 replaces the
@@ -854,6 +900,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "control intent violates decision-log contract", "detail": errors})
                 return
             with _STATE_LOCK:
+                # Re-check under the lock: an OUTPUT_READY (or another cancel) may have finished the task while the
+                # row was being validated; a completed delivery must never be overwritten with 'cancelled'.
+                fresh = self.store.get_task(task_id) or task
+                if fresh["status"] in TERMINAL_STATUSES:
+                    self._send_json(409, {"error": f"task is already {fresh['status']}", "status": fresh["status"]})
+                    return
+                task = fresh
                 new_status = {"pause": "paused", "cancel": "cancelled"}[action]
                 # Log row first, then the state it explains (FR-20 replay order).
                 self.store.append_decision(row)
@@ -876,8 +929,12 @@ class Handler(BaseHTTPRequestHandler):
         """FR-10: where the edge sends a result file before it reports OUTPUT_READY (a presigned S3 PUT, or this
         server's own upload route when running locally). The task must exist; names are plain file names."""
         task_id, name = body.get("task_id"), body.get("name")
-        if not isinstance(task_id, str) or self.store.get_task(task_id) is None:
+        task = self.store.get_task(task_id) if isinstance(task_id, str) else None
+        if task is None:
             self._send_json(404, {"error": f"unknown task {task_id}"})
+            return
+        if task.get("status") in TERMINAL_STATUSES:     # a finished task's evidence must not be replaced
+            self._send_json(409, {"error": f"task is already {task['status']}", "status": task["status"]})
             return
         ctype = body.get("content_type") if isinstance(body.get("content_type"), str) else "application/octet-stream"
         target = self.orch.results.presign_put(task_id, name, ctype)
@@ -896,17 +953,33 @@ class Handler(BaseHTTPRequestHandler):
         if not self._edge_authorised("/results/upload-url"):
             return
         task_id, name = parts[3], parts[4]
+        raw_length = self.headers.get("Content-Length")
+        if raw_length is None:     # chunked or length-less bodies would be read as 0 bytes and replace a stored result
+            self._send_json(411, {"error": "Content-Length is required"})
+            return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = int(raw_length)
         except ValueError:
-            length = -1
-        if length < 0 or length > MAX_UPLOAD_BYTES:
+            self._send_json(400, {"error": "Content-Length is not a number"})
+            return
+        if length <= 0:
+            self._send_json(400, {"error": "empty upload refused"})
+            return
+        if length > MAX_UPLOAD_BYTES:
             self._send_json(413, {"error": "file too large"})
             return
-        if self.store.get_task(task_id) is None:
+        task = self.store.get_task(task_id)
+        if task is None:
             self._send_json(404, {"error": f"unknown task {task_id}"})
             return
-        ref = self.orch.results.save_upload(task_id, name, self.rfile.read(length))
+        if task.get("status") in TERMINAL_STATUSES:
+            self._send_json(409, {"error": f"task is already {task['status']}", "status": task["status"]})
+            return
+        body_bytes = self.rfile.read(length)
+        if len(body_bytes) != length:
+            self._send_json(400, {"error": "upload body shorter than Content-Length"})
+            return
+        ref = self.orch.results.save_upload(task_id, name, body_bytes)
         if ref is None:
             self._send_json(400, {"error": "upload refused"})
             return
@@ -1063,25 +1136,23 @@ class Handler(BaseHTTPRequestHandler):
           - DUR#restriction#* (runtime restrictions declared dynamically)
 
         Resets corresponding in-memory orchestrator states and unblocks queued tasks.
+
+        Only this server's own durable store is cleared. A local server (FileDurable) never builds an AWS client:
+        it used to fall back to DynamoDurable.from_env(), which with ambient credentials deleted rows from the
+        deployed stack's table.
         """
         cleared_closures = []
         cleared_habits = []
         cleared_restrictions = []
-        dynamo_deleted = []
+        durable_deleted = []
 
         with _STATE_LOCK:
             dur = getattr(self.orch, "durable", None)
-            from cloud.durable import DynamoDurable
-            if isinstance(dur, DynamoDurable):
+            if dur is not None and hasattr(dur, "clear_kind"):
                 for k in ("closure", "habit", "restriction"):
-                    dynamo_deleted.extend(dur.clear_kind(k))
-            else:
-                try:
-                    ddb = DynamoDurable.from_env()
-                    for k in ("closure", "habit", "restriction"):
-                        dynamo_deleted.extend(ddb.clear_kind(k))
-                except (Exception, ImportError):
-                    pass
+                    durable_deleted.extend(dur.clear_kind(k) or [])
+            is_dynamo = type(dur).__name__ == "DynamoDurable"
+            dynamo_deleted = durable_deleted if is_dynamo else []
 
             if hasattr(self.orch, "mapstate") and self.orch.mapstate is not None:
                 cleared_closures = self.orch.mapstate.reset()
@@ -1092,11 +1163,11 @@ class Handler(BaseHTTPRequestHandler):
             if hasattr(self.orch, "waits") and isinstance(self.orch.waits, dict):
                 self.orch.waits.clear()
 
-            ops = len(dynamo_deleted) if dynamo_deleted else (len(cleared_closures) + len(cleared_habits) + len(cleared_restrictions))
+            ops = len(durable_deleted) if durable_deleted else (len(cleared_closures) + len(cleared_habits) + len(cleared_restrictions))
             if ops > 0:
                 self.cost.record(dynamodb_ops=ops)
 
-            self._drain()
+        self._drain()      # planning (model calls) outside the state lock; apply_outcome takes it per outcome
 
         self._send_json(200, {
             "accepted": True,
@@ -1105,6 +1176,7 @@ class Handler(BaseHTTPRequestHandler):
                 "habits": cleared_habits,
                 "restrictions": cleared_restrictions,
             },
+            "durable_deleted": durable_deleted,
             "dynamodb_deleted": dynamo_deleted,
         })
 
@@ -1321,7 +1393,10 @@ class Handler(BaseHTTPRequestHandler):
                 p = None
                 PRESET_PROFILES = {}
 
-            if p is None and profile_name not in ("custom",):
+            # The harness names env/CLI profiles 'env' and trace rows 'trace@<t>s': any non-preset name that carries
+            # explicit parameters is a custom fault (the name is kept for display); a bare unknown name is an error.
+            has_params = any(k in body for k in ("latency_ms", "jitter_ms", "loss_rate", "disconnected"))
+            if p is None and profile_name not in ("custom",) and not has_params:
                 valid = list(PRESET_PROFILES.keys()) if PRESET_PROFILES else ["healthy", "mild_wan", "shielded_room", "severe", "basement_outage"]
                 self._send_json(400, {"error": f"unknown fault profile: '{profile_name}'. Expected one of {valid} or 'custom'"})
                 return
@@ -1607,6 +1682,14 @@ class NimbusServer(ThreadingHTTPServer):
         super().server_close()
 
 
+def default_bind_host() -> str:
+    """Interface server.py listens on. Loopback by default, so a local demo (often run with NIMBUS_AUTH_DISABLED=1)
+    is not reachable from the LAN. Production (NIMBUS_BACKEND=aws / ENVIRONMENT=production) and containers (the
+    Dockerfile sets NIMBUS_BIND_HOST=0.0.0.0) listen on all interfaces; set NIMBUS_BIND_HOST to serve remote edges."""
+    production = os.environ.get("NIMBUS_BACKEND") == "aws" or os.environ.get("ENVIRONMENT") == "production"
+    return os.environ.get("NIMBUS_BIND_HOST") or ("0.0.0.0" if production else "127.0.0.1")
+
+
 def make_server(host: str, port: int, data_dir: Path) -> NimbusServer:
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)  # cost counters live here even when the store is DynamoDB
@@ -1738,8 +1821,9 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", "8000"))
     data_dir = Path(os.environ.get("DATA_DIR", "data"))
-    httpd = make_server("0.0.0.0", port, data_dir)
-    print(f"Nimbus local API + app on http://127.0.0.1:{port} (data in {data_dir}/)")
+    host = default_bind_host()
+    httpd = make_server(host, port, data_dir)
+    print(f"Nimbus local API + app on http://127.0.0.1:{port} (bound to {host}; data in {data_dir}/)")
     if is_mqtt_enabled():
         print("Nimbus MQTT transport enabled on canonical topics (nimbus/{cluster_id}/...)")
     httpd.serve_forever()

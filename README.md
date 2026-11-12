@@ -264,7 +264,9 @@ It should end with `RESULT: ALL TASKS COMPLETED`. Stop everything with:
 ```
 
 Logs are in `logs/` (and a copy per run in `run_logs/`). A local cloud runs with `NIMBUS_AUTH_DISABLED=1`, so the
-apps need no token; the deployed cloud always requires tokens (section 6.7).
+apps need no token; it listens on 127.0.0.1 only and refuses cross-origin browser writes. Set `NIMBUS_BIND_HOST=0.0.0.0`
+to serve edges on other machines (then give it tokens instead of disabling auth). The cloud code requires tokens
+whenever `NIMBUS_BACKEND=aws` (section 6.7).
 
 ### 6.3 Run the parts one at a time
 
@@ -380,6 +382,10 @@ the cloud container on ECS Fargate, DynamoDB tables, S3, SQS with a dead-letter 
 Manager, CloudWatch alarms and a budget alarm. It creates billable resources (the container runs all the time), so
 destroy it when you are done. Use your own AWS account and credentials (`aws configure`).
 
+This is what the Terraform defines. The team deployment measured on 7 Nov 2026 was created from an earlier version
+and an image built before fail-closed auth; it differs in networking, token injection and the dead-letter queue (see
+[docs/aws-integration-audit.md](docs/aws-integration-audit.md)). Results labelled *deployed* come from that build.
+
 1. Initialise and check:
 
 ```bash
@@ -404,10 +410,11 @@ aws secretsmanager put-secret-value --region ap-south-1 --secret-id nimbus-ds252
 cd ../.. && AWS_REGION=ap-south-1 ./scripts/build_push.sh
 ```
 
-5. Create everything else, optionally with a budget alert address:
+5. Create everything else with the image tag `build_push.sh` printed (a git-SHA tag, so a later push really
+   redeploys), optionally with an alert address for the budget and the missed check-in alarm:
 
 ```bash
-cd infra/terraform && terraform apply -var alert_email=you@example.com
+cd infra/terraform && terraform apply -var app_image=<repo>:<git-sha printed by build_push.sh> -var alert_email=you@example.com
 ```
 
 6. Read the API address and connect edges to it with the edge token:
@@ -420,8 +427,12 @@ terraform output -raw api_endpoint
 cd ../.. && python3 edge/run_supervisor.py --cluster east-wing --cloud-url "$(terraform -chdir=infra/terraform output -raw api_endpoint)" --token <NIMBUS_EDGE_TOKEN> --robot-backend sim --sim-mode kinematic
 ```
 
-Or start the whole stack against it: `NIMBUS_CLOUD_URL=<api_endpoint> NIMBUS_EDGE_TOKEN=<token> ./run_all.sh kinematic`.
-Requests and console calls send `Authorization: Bearer <token>` with the requester or operator token.
+Or start the whole stack against it: `NIMBUS_LOCAL_CLOUD=0 NIMBUS_CLOUD_URL=<api_endpoint> NIMBUS_EDGE_TOKEN=<token> ./run_all.sh kinematic`
+(without `NIMBUS_LOCAL_CLOUD=0`, run_all.sh always uses a local cloud and ignores `NIMBUS_CLOUD_URL`).
+Open the apps once with the token in the URL fragment, which never reaches the server: `<api_endpoint>/#token=<requester
+token>`, `<api_endpoint>/operator#token=<operator token>`, `<api_endpoint>/map#token=<operator token>`. The requester app
+and console keep it for that tab and send `Authorization: Bearer <token>` on every call; on a 401 they show a banner
+where it can be pasted. Who may call what: [docs/security-endpoint-matrix.md](docs/security-endpoint-matrix.md).
 
 7. Tear down (empty the results bucket first, or `destroy` stops at it):
 
@@ -480,7 +491,7 @@ python experiments/cloud/report.py
 | Robot and edge | R7 | `./scripts/run_r7.sh` | nothing |
 | Robot and edge | R9 | `./scripts/R9.sh --full` | nothing (two 10-minute outages) |
 | Robot and edge | R10 | `python experiments/robot_edge/r10_escalation_contracts.py --seed 1 --out results/final/R10` | nothing |
-| Network | N2 to N10 | `python results/final/N2/run_n2.py` (likewise `N3` ... `N10`) | nothing; N10 needs a running cloud (`NIMBUS_CLOUD_URL`, default `http://127.0.0.1:8000`, e.g. from 6.2) |
+| Network | N2 to N10 | `python results/final/N2/run_n2.py` (likewise `N3` ... `N10`) | nothing, no AWS; N10 starts its own local server unless `NIMBUS_CLOUD_URL` is set (then it exits if `GET /health` fails; tokens from `NIMBUS_*_TOKEN`); `--no-video` skips its Playwright recording |
 | Scenario | T1 to T8 | `./T1.sh kinematic` ... `./T8.sh`, or all: `./one_touch_t1_t8.sh` | a cloud for C1 and C2 (below) |
 
 Any `--target local` instead of `local-bedrock` runs the same cloud experiment with the stand-in model (results
@@ -544,15 +555,15 @@ rerun them are in section 6.9 and [experiments/cloud/README.md](experiments/clou
 | ID | Experiment | PRD | Verdict | What it showed | Results |
 | --- | --- | --- | --- | --- | --- |
 | N1 | real network traces | E4 input |  | to be filled |  |
-| N2 | Poisson model of network breakdown | E4 | PASS | KS test p=0.8527 >= 0.05; C1 predicted success 98.4% vs C2 61.8% at lambda=20/hr (AIC best fit: weibull) (source: modelled) | [N2](results/final/N2/README.md) |
-| N3 | trace replay | FR-6, NFR-2 | PASS | Recovery time p95=3.40 s <= 60 s pass bar; C1 success 100.0% >= 90% across 720 runs (source: modelled) | [N3](results/final/N3/README.md) |
-| N4 | duplicate, re-ordered and stale messages | FR-8 | PASS | 0 duplicate steps executed across 500 injected messages in 10 seeded runs (100.0% deduplication) (source: simulated) | [N4](results/final/N4/README.md) |
-| N5 | selective sharing | FR-11 | PASS | Recall = 100.0% (FN=0, 100% pass bar met); Precision = 100.0% across 300 evaluations (source: simulated) | [N5](results/final/N5/README.md) |
-| N6 | audit replay and determinism | FR-20, NFR-6 | PASS | 10/10 seeded replays byte-identical (0 diff bytes in e6_seed_diff.txt); 100% timeline reconstruction (source: simulated) | [N6](results/final/N6/README.md) |
-| N7 | security and privacy audit | NFR-5 | PASS | 10/10 audit checks passed (0 unjustified IAM wildcards, 0 secrets, 100% synthetic datasets, 0 camera WAN leaks) (source: measured_real_system) | [N7](results/final/N7/README.md) |
-| N8 | scalability | NFR-3 | PASS | 10-robot latency ratio = 1.13x <= 1.50x; 15-robot latency ratio = 1.10x <= 1.50x (10/10 seeds passed) (source: modelled) | [N8](results/final/N8/README.md) |
-| N9 | cost per task | NFR-4 | PASS | C1 calls = 1.69 vs C2 = 6.93 (24.4% <= 50.0% pass bar); C1 cost=$0.000544/task (source: measured) | [N9](results/final/N9/README.md) |
-| N10 | requester app and operator console | FR-21, FR-22 | PASS | Cancel p95=0.037s <= 5.0s, Override p95=0.037s <= 5.0s, max=0.043s; SC-1 verified (source: measured) | [N10](results/final/N10/README.md) |
+| N2 | Poisson model of network breakdown | E4 | PASS | Model over synthetic inputs (the traces hold one outage, too few to fit): C1 predicted success 100.00% vs C2 60.71% at 20 outages/h; C1's result follows from the model's 60 s survival assumption and the KS test (p=0.85) runs on exponential draws, so neither is evidence about a real network (source: modelled) | [N2](results/final/N2/README.md) |
+| N3 | network degradation (analytical model; planned as trace replay) | FR-6, NFR-2 | PASS | Closed-form formulas over six hand-set profiles, no trace replayed and no system run: C1 recovery p95 3.40 s over outage rows and C1 success 240/240, both fixed by the model's assumptions; see R7 and R9 for measured recovery (source: modelled) | [N3](results/final/N3/README.md) |
+| N4 | duplicate and replayed messages at the cloud ingress | FR-8 | PASS | Live local server: 0 steps executed twice over 5000 messages in 10 seeds; 1500/1500 repeated message ids dropped, 1500/1500 repeat cancels of a cancelled task refused with 409; no true stale-version or re-ordering injection (source: simulated) | [N4](results/final/N4/README.md) |
+| N5 | selective sharing | FR-11 | PASS | MapState told every affected cluster: recall 100% (441 TP, 0 FN), precision 100% over 300 seeded random events (72 unique zone/type events, all 15 zones) checked against the FR-11 rule (source: simulated) | [N5](results/final/N5/README.md) |
+| N6 | audit replay and determinism | FR-20, NFR-6 | PASS | 10/10 seeded scenarios gave byte-identical decision logs in two processes with different PYTHONHASHSEED (147 rows, empty diff) (source: simulated) | [N6](results/final/N6/README.md) |
+| N7 | security and privacy audit | NFR-5 | PASS | Static repository scan: 10/10 checks passed (0 unjustified IAM wildcards, 0 secret-pattern hits, 0 manifest or PII problems, no inline image field in any WAN schema); no git history or deployed account inspected (source: static_audit) | [N7](results/final/N7/README.md) |
+| N8 | scalability (cloud side) | NFR-3 | PASS | Cloud request-to-decision p95 with the stand-in model (best of 3, synthetic arrivals, not MIMIC-IV): 10 robots 1.10x and 15 robots 1.15x the 3-robot baseline on average, worst seed 1.44x; 10/10 seeds within 1.5x; edge decision latency not measured (source: mock_llm) | [N8](results/final/N8/README.md) |
+| N9 | cost per task | NFR-4 | PASS | From C9's real-Bedrock counts: C1 1.18 vs C2 5.27 calls per task (22.4%, 95% CI 19.8% to 25.2%); priced at list rates, C1 $0.000226, C2 $0.000555, C3 $0.000052 per task (tokens plus an assumed Fargate share) (source: modelled) | [N9](results/final/N9/README.md) |
+| N10 | requester app and operator console | FR-21, FR-22 | PASS (cloud side only) | Local in-process server: cancel/pause control-API round trip p95 0.057 s, 40/40 acknowledged with a new stop-lease version; SC-1 completed with a simulated edge completion; delivery of the stop lease to an edge or robot was not measured (source: measured) | [N10](results/final/N10/README.md) |
 
 The network group's own summary, with its scope notes, is [results/final/SUMMARY.md](results/final/SUMMARY.md).
 

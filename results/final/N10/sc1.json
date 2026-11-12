@@ -1,0 +1,13 @@
+{
+  "request_text": "Need an infusion pump at 2B-12, urgent",
+  "edge_completion": "simulated (posted by this script)",
+  "request_status_code": 201,
+  "task_id": "task-000041",
+  "initial_status": "needs_clarification",
+  "answer_status_code": 201,
+  "status_before_completion": "leased",
+  "lease_version": 1,
+  "output_ready_status_code": 201,
+  "final_status": "completed",
+  "completed": true
+}

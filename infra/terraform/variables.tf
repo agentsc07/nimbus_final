@@ -11,13 +11,13 @@ variable "project_name" {
 }
 
 variable "app_image" {
-  description = "Container image for the Fargate service. Empty (the default) uses the ECR repository this configuration creates, tag `latest`; push it with scripts/build_push.sh."
+  description = "Container image for the Fargate service. Pass the immutable reference scripts/build_push.sh prints (`<repo>:<git-sha>` or `<repo>@sha256:...`). Empty (the default) uses `<repo>:latest`, which does not redeploy anything when a new `latest` is pushed: the task definition text does not change, so ECS keeps running the old image."
   type        = string
   default     = ""
 }
 
 variable "egress_mode" {
-  description = "How the Fargate task reaches the internet (image pull, Bedrock): public_ip (cheapest) or none (supply VPC endpoints yourself)."
+  description = "How the Fargate task reaches the internet (image pull, Bedrock, Secrets Manager, DynamoDB): public_ip (cheapest: internet gateway plus a public IP per task) or none (no route out; supply NAT or VPC endpoints yourself)."
   type        = string
   default     = "public_ip"
 
@@ -28,9 +28,21 @@ variable "egress_mode" {
 }
 
 variable "alert_email" {
-  description = "E-mail for budget alerts. Empty disables the budget."
+  description = "E-mail for budget alerts and for the missed check-in alarm (SNS topic + e-mail subscription, which the recipient must confirm). Empty disables the budget and the SNS topic; the alarm then still changes state but notifies nobody."
   type        = string
   default     = ""
+}
+
+variable "expected_clusters" {
+  description = "How many edge clusters should be healthy. The missed check-in alarm fires when the emitted Nimbus HealthyClusters metric drops below this (hospital_sim6 has two: east-wing and west-wing)."
+  type        = number
+  default     = 2
+}
+
+variable "metrics_pack" {
+  description = "Pack name the container runs (Dockerfile NIMBUS_PACK). The service emits its CloudWatch metrics with a Pack dimension, so the alarm must use the same value to see them."
+  type        = string
+  default     = "hospital_sim6"
 }
 
 variable "budget_usd" {
@@ -58,19 +70,19 @@ variable "knowledge_base_id" {
 }
 
 variable "ecs_target_url" {
-  description = "Legacy target HTTP URL for container proxy (defaults to localhost). In the private VPC Link architecture, API Gateway integrates directly with the internal ALB listener (aws_lb_listener.app.arn) via aws_apigatewayv2_vpc_link without public IPs."
+  description = "Unused by this configuration (API Gateway integrates with the internal ALB listener through the VPC link). Kept so existing tfvars files still load."
   type        = string
   default     = "http://127.0.0.1:8000"
 }
 
 variable "assign_public_ip" {
-  description = "Whether to assign public IP to Fargate tasks. Defaults to false for security; API Gateway or internal load balancer should be used for access."
+  description = "Override for the Fargate task's public IP. Null (the default) derives it from egress_mode: true for public_ip, false for none. Without a public IP and without NAT or VPC endpoints the task cannot pull its image or reach Bedrock, Secrets Manager or DynamoDB. Inbound traffic is limited by the app security group (internal ALB only) either way."
   type        = bool
-  default     = false
+  default     = null
 }
 
 variable "allowed_ingress_cidr_blocks" {
-  description = "Allowed CIDR blocks for inbound port 8000 on ECS security group. Restricted to internal VPC CIDR by default; public traffic enters via API Gateway."
+  description = "Unused by this configuration: inbound port 8000 is allowed only from the internal ALB's security group (aws_security_group.app). Kept so existing tfvars files still load."
   type        = list(string)
   default     = ["10.20.0.0/16"]
 }

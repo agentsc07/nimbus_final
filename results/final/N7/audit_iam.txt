@@ -1,11 +1,23 @@
 # IAM and secrets audit (NFR-5)
 
 - IAM statements with a wildcard: 2 (0 unjustified)
-- Secrets found in tracked source: 0
+- Secrets found in tracked files: 0
+- Allowlisted placeholder / test-fixture hits: 8
 
 | file | statement | problem | justification |
 |---|---|---|---|
 | p3-dev-policy.json | BedrockInvokeAndDiscover | wildcard resource | Bedrock invocation resources are foundation-model and inference-profile ARNs that differ per region |
 | p3-dev-policy.json | DynamoDbListTables | wildcard resource | dynamodb:ListTables does not support resource-level permissions in IAM |
+
+| allowlisted file | line | kind | why |
+|---|---|---|---|
+| .env.example | 20 | Nimbus API token | placeholder |
+| .env.example | 23 | Nimbus API token | placeholder |
+| .env.example | 24 | Nimbus API token | placeholder |
+| .env.example | 25 | Nimbus API token | placeholder |
+| .env.example | 26 | Nimbus API token | placeholder |
+| .env.example | 27 | Nimbus API token | placeholder |
+| tests/test_ms2_audit.py | 66 | AWS access key id | placeholder |
+| tests/test_ms2_audit.py | 67 | AWS access key id | placeholder |
 
 **RESULT: PASS**

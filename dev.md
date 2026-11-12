@@ -93,7 +93,10 @@ publish function. Every decision is delegated to an `Orchestrator` (`cloud/orche
 | `GET /llm-status`, `/metrics`, `/cost`, `/trace`, `/notifications` | apps, monitoring | model status, latency percentiles, cost counters, notices |
 | `POST /llm/outage`, `GET/POST /fault` | experiments | fault injection; protected by `NIMBUS_DEMO_FAULTS=1` or an admin token |
 
-Edge endpoints require `Authorization: Bearer <NIMBUS_EDGE_TOKEN>` when that variable is set (NFR-5).
+Every route except the public pages, `/pack`, `/ui-config`, `/health` and `/schemas/*` needs a role token
+(`Authorization: Bearer <token>`) and fails closed (401) when no token is configured for that role; see
+[docs/security-endpoint-matrix.md](docs/security-endpoint-matrix.md). `NIMBUS_AUTH_DISABLED=1` turns this off for local
+runs only (never with `NIMBUS_BACKEND=aws`).
 
 ### `cloud/` modules
 
@@ -295,7 +298,8 @@ The most used environment variables:
 | `NIMBUS_BACKEND` | `local` | `aws` for DynamoDB and S3 |
 | `NIMBUS_TICK_S` | `5` | how often time-driven work runs |
 | `NIMBUS_ALLOW_UNKNOWN` | `1` | lease to clusters that have not checked in yet |
-| `NIMBUS_EDGE_TOKEN`, `NIMBUS_ADMIN_TOKEN` | (off) | bearer tokens for edge endpoints and fault injection |
+| `NIMBUS_REQUESTER_TOKEN`, `NIMBUS_OPERATOR_TOKEN`, `NIMBUS_EDGE_TOKEN`, `NIMBUS_ADMIN_TOKEN` | (unset) | role bearer tokens; a role with no token answers 401 (fail closed) unless `NIMBUS_AUTH_DISABLED=1` locally |
+| `NIMBUS_BIND_HOST` | `127.0.0.1` (`0.0.0.0` with `NIMBUS_BACKEND=aws` and in the Docker image) | interface `server.py` listens on |
 | `NIMBUS_DEMO_FAULTS` | `0` | allow `/llm/outage` and `/fault` without a token (local only) |
 | `NIMBUS_LLM_OUTAGE` | (off) | `after_s:duration_s` scheduled model outage |
 | `NIMBUS_CLOUD_URL`, `NIMBUS_LOCAL_CLOUD` | deployed | which cloud `run_all.sh` and the edges use |
@@ -399,10 +403,14 @@ be added. They can reuse `ResultDir` from `experiments/cloud/lib.py` so their fo
   deployment's address: to use it, set `NIMBUS_CLOUD_URL` (or pass `--target <url>`). The harness refuses to start
   while real edges are connected. An interrupted C8 run on 6 Nov left queued test tasks;
   `experiments/cloud/cleanup_deployed_c8.py` cancels exactly those.
-- **Not yet protected: the requester and operator routes.** Only the edge routes (`EDGE_PATHS`) check a token.
-  `POST /requests`, `/tasks/<id>/control`, `/map/reopen`, `/inventory/*` and `/reset-memory` rely on the API Gateway
-  in front of the service, and `static/operator.js` calls the last two directly. Closing this needs a role-based
-  check in `server.py` plus a token in the web apps (infrastructure and web app work).
+- **Authentication is fail-closed in the code, but not in the deployed image.** `server.py` checks a bearer token
+  per role on every route except the public pages, `/pack`, `/ui-config`, `/health` and `/schemas/*` (requester,
+  operator, edge and admin tokens, plus the master `NIMBUS_AUTH_TOKEN`; table in `docs/security-endpoint-matrix.md`);
+  a role with no token configured answers 401 (403 for `/fault` and `/llm/outage`). The web apps take a token from
+  `#token=...` or a token field. `NIMBUS_AUTH_DISABLED=1`, which `run_all.sh` sets for its local cloud, is ignored in
+  production (`NIMBUS_BACKEND=aws`). The image deployed in AWS on 7 Nov 2026 predates this and has no tokens configured,
+  so every deployed route except `/fault` and `/llm/outage` is unauthenticated until a new image is deployed and the
+  four token keys are written to Secrets Manager.
 - **Task records are shared objects.** `Store.get_task` returns the live dictionary, and the ticker changes tasks
   outside the state lock. Writes go through `put_task` under the lock, so no lost update has been seen, but a
   reader can see a task halfway through an edit. Returning copies needs the callers that mutate-then-`put_task` to

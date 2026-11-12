@@ -41,12 +41,18 @@ does not mention, that is said too. Nothing here is assumed: every "does not exi
 
 ### 2.3 Authentication ("bearer token")
 * The PRD asks for this in **NFR-5** ("authenticated access; least-privilege IAM; no secrets in code").
-* Implementation: if the cloud is started with the environment variable `NIMBUS_EDGE_TOKEN=<secret>`, then the edge-facing routes
-  (`/checkins`, `/escalations`, `/fleet/heartbeat`, `/outbox`, `/relay/decide`) require the header
-  `Authorization: Bearer <secret>`, otherwise they answer `401`. The edge sends that header if it is started with the same
-  `NIMBUS_EDGE_TOKEN` (or `--token`).
-* **Default: the variable is not set, so there is no authentication** and `run_all.sh` does not set it. The requester app and
-  operator console routes are not token-protected either (only `/fault` and `/llm/outage` need `NIMBUS_DEMO_FAULTS=1` or a token).
+* Implementation (`server.py:_is_authorized`): every route except the public pages, `/pack`, `/ui-config`, `/health` and
+  `/schemas/*` needs a bearer token, and **fails closed**: a route whose role has no token configured answers `401`
+  (`403` for `/fault` and `/llm/outage`). The edge-facing routes (`/checkins`, `/escalations`, `/fleet/heartbeat`,
+  `/relay/decide`, `GET /outbox`, `POST /results/upload-url` and `PUT /results/upload/...`) accept `NIMBUS_EDGE_TOKEN` (or
+  the operator, admin or master `NIMBUS_AUTH_TOKEN` token) as `Authorization: Bearer <secret>`. The edge sends that header
+  when it is started with `NIMBUS_EDGE_TOKEN` (or `--token`). The requester and operator routes need their own tokens;
+  the full table is in [security-endpoint-matrix.md](security-endpoint-matrix.md).
+* **Local runs:** `NIMBUS_AUTH_DISABLED=1` switches the check off, but only outside production (`NIMBUS_BACKEND=aws` or
+  `ENVIRONMENT=production` ignores it); `run_all.sh` sets it for its local cloud. While it is off, edge routes still need
+  `NIMBUS_EDGE_TOKEN` if that is set, and cross-origin browser POSTs are refused.
+* **Deployed cloud:** the image running in AWS since 7 Nov 2026 predates this check and has no tokens configured, so there
+  the routes were unauthenticated (see `docs/aws-integration-audit.md`).
 * Message-level guards that are always on (independent of the token): every message needs a `message_id` and a lease version.
 
 ### 2.4 Rules that apply to every message (PRD FR-8)

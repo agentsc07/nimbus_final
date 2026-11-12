@@ -1,11 +1,25 @@
-seed,c1_avg_calls_per_task,c2_avg_calls_per_task,c1_vs_c2_call_ratio_pct,c1_avg_cost_usd,c2_avg_cost_usd,c3_avg_cost_usd,pass_nfr4,source
-1,1.62,6.25,26.0,0.000516,0.000996,0.00039,True,measured
-2,1.62,6.88,23.64,0.000533,0.001095,0.000406,True,measured
-3,1.62,6.88,23.64,0.000505,0.001047,0.000381,True,measured
-4,1.75,6.5,26.92,0.000578,0.001121,0.000442,True,measured
-5,1.5,6.75,22.22,0.000537,0.001063,0.000412,True,measured
-6,2.12,7.12,29.82,0.000581,0.001098,0.000421,True,measured
-7,1.88,6.75,27.78,0.000547,0.001075,0.000416,True,measured
-8,1.38,7.0,19.64,0.000519,0.001064,0.000409,True,measured
-9,1.75,7.88,22.22,0.000564,0.001179,0.000434,True,measured
-10,1.62,7.25,22.41,0.000559,0.001133,0.000433,True,measured
+config,task,tasks,calls_per_task,tokens_in_per_task,tokens_out_per_task,bedrock_usd_per_task,fargate_usd_per_task,total_usd_per_task,source
+C1,T1,5,1.0,2242.0,51.6,0.0001469,5.155e-05,0.00019846,modelled (C9 measured counts x list prices)
+C1,T2,5,1.0,2313.0,60.4,0.00015328,5.155e-05,0.00020483,modelled (C9 measured counts x list prices)
+C1,T3,5,1.4,3170.8,76.4,0.00020858,5.155e-05,0.00026014,modelled (C9 measured counts x list prices)
+C1,T4,5,1.0,2319.0,54.2,0.00015215,5.155e-05,0.0002037,modelled (C9 measured counts x list prices)
+C1,T5,5,2.0,4375.0,96.0,0.00028554,5.155e-05,0.00033709,modelled (C9 measured counts x list prices)
+C1,T7,5,1.2,2747.6,64.8,0.00018041,5.155e-05,0.00023196,modelled (C9 measured counts x list prices)
+C1,T8,15,1.0,2237.7,55.0,0.00014746,5.155e-05,0.00019901,modelled (C9 measured counts x list prices)
+C1,all,45,1.1778,2653.4,63.2,0.00017436,5.155e-05,0.00022591,modelled (C9 measured counts x list prices)
+C2,T1,5,4.8,6487.6,210.0,0.00043966,5.155e-05,0.00049121,modelled (C9 measured counts x list prices)
+C2,T2,5,5.0,7031.0,236.0,0.0004785,5.155e-05,0.00053005,modelled (C9 measured counts x list prices)
+C2,T3,5,5.4,7883.6,254.2,0.00053402,5.155e-05,0.00058558,modelled (C9 measured counts x list prices)
+C2,T4,5,6.0,8229.0,312.8,0.00056881,5.155e-05,0.00062037,modelled (C9 measured counts x list prices)
+C2,T5,5,5.0,7887.0,218.4,0.00052564,5.155e-05,0.00057719,modelled (C9 measured counts x list prices)
+C2,T7,5,8.2,10755.6,403.6,0.0007422,5.155e-05,0.00079375,modelled (C9 measured counts x list prices)
+C2,T8,15,4.3333,6133.6,194.7,0.00041475,5.155e-05,0.00046631,modelled (C9 measured counts x list prices)
+C2,all,45,5.2667,7408.3,246.6,0.00050368,5.155e-05,0.00055523,modelled (C9 measured counts x list prices)
+C3,T1,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T2,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T3,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T4,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T5,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T7,5,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,T8,15,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)
+C3,all,45,0.0,0.0,0.0,0.0,5.155e-05,5.155e-05,modelled (C9 measured counts x list prices)

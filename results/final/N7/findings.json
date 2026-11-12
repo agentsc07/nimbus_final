@@ -1,0 +1,21 @@
+{
+  "iam_findings": [
+    {
+      "file": "p3-dev-policy.json",
+      "statement": "BedrockInvokeAndDiscover",
+      "problem": "wildcard resource",
+      "justified": "Bedrock invocation resources are foundation-model and inference-profile ARNs that differ per region"
+    },
+    {
+      "file": "p3-dev-policy.json",
+      "statement": "DynamoDbListTables",
+      "problem": "wildcard resource",
+      "justified": "dynamodb:ListTables does not support resource-level permissions in IAM"
+    }
+  ],
+  "secret_findings": [],
+  "manifest_problems": [],
+  "pii_findings": [],
+  "inline_binary_schema_fields": {},
+  "audit_data_manifest_problems": []
+}

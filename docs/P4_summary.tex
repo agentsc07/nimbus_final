@@ -32,11 +32,11 @@
 \vspace{-6pt}
 
 \section{Executive Overview of P4 Deliverables}
-Person 4 delivered the production cloud infrastructure and deployment foundation for Project Nimbus, transitioning the system from local simulation to a live, monitored AWS environment. The implementation strictly adheres to a vanilla, lightweight stack: standard library Python HTTP server (\texttt{server.py}), standard AWS SDK (\texttt{boto3}), and vanilla browser assets (HTML, CSS, JavaScript) without external application frameworks.
+Person 4 delivered the cloud infrastructure code and deployment foundation for Project Nimbus, taking the system from local simulation to an AWS deployment. The implementation strictly adheres to a vanilla, lightweight stack: standard library Python HTTP server (\texttt{server.py}), standard AWS SDK (\texttt{boto3}), and vanilla browser assets (HTML, CSS, JavaScript) without external application frameworks.
 
 \begin{itemize}
-  \item \textbf{Live Cloud Service:} Automated Terraform provisioning and containerized deployment on AWS ECS Fargate, served via Amazon API Gateway HTTP API (\texttt{qrgdidp9te.execute-api.ap-south-1.amazonaws.com}).
-  \item \textbf{Requester Web Application:} Lightweight hospital logistics portal (\texttt{static/requester.html}, \texttt{static/requester.js}) at root route (\texttt{/}) providing natural language item dispatch, clarification response intake, and real-time task status polling.
+  \item \textbf{Cloud Service:} Terraform (\texttt{infra/terraform/}) for ECS Fargate behind an API Gateway HTTP API (\texttt{qrgdidp9te}). The 7 Nov 2026 deployment came from an earlier configuration and image; it differs from the design below.
+  \item \textbf{Requester Web Application:} Lightweight hospital logistics portal (\texttt{static/index.html}, \texttt{static/app.js}) at root route (\texttt{/}) providing natural language item dispatch, clarification response intake, and real-time task status polling.
   \item \textbf{Operator Command Console:} Operational command dashboard (\texttt{static/operator.html}, \texttt{static/operator.js}) at \texttt{/operator} featuring live fleet telemetry, link fault monitoring, active task tracking, and runtime controls.
   \item \textbf{Operator Inventory Controls:} Direct inventory counters (\texttt{data/inventory.json}, \texttt{/inventory}) in the console with exactly two buttons: ``Set stock'' and ``Reset stock''. When tasks are leased, stock is automatically decremented. Memory can also be reset via \texttt{POST /reset-memory}.
   \item \textbf{Active Pack Switch to \texttt{hospital\_sim6}:} Migrated the default domain configuration to \texttt{packs/hospital\_sim6} (ID: \texttt{hospital\_sim6@0.1.0:88d32afe}) across \texttt{packs/DEFAULT}, \texttt{Dockerfile}, and ECS task definition. This configures the six-robot Gazebo world (\texttt{R1}--\texttt{R3} in \texttt{east-wing}, \texttt{R4}--\texttt{R6} in \texttt{west-wing}) with P1 Gazebo map topology.
@@ -84,8 +84,8 @@ Hospital requests are submitted as JSON payloads to \texttt{POST /requests}:
 \end{itemize}
 
 \pagebreak
-\section{Live AWS Infrastructure Architecture}
-The cloud infrastructure is provisioned through modular Terraform configurations located in \texttt{infra/terraform/} and operates in AWS Account \texttt{930124786284}, Region \texttt{ap-south-1}.
+\section{AWS Infrastructure Architecture (as defined in Terraform)}
+The diagram shows the design that the Terraform configuration in \texttt{infra/terraform/} defines for AWS Account \texttt{930124786284}, Region \texttt{ap-south-1}. This configuration has not been applied as it stands; what is deployed is listed after the diagram.
 
 \begin{center}
 \begin{tikzpicture}[
@@ -138,7 +138,7 @@ The cloud infrastructure is provisioned through modular Terraform configurations
   \node[edge, below=0.75cm of client] (fleet) {Hospital Edge Fleet\\{\tiny\color{gray!75!black}6 Robots (East/West Wings)\\[-1pt]Gazebo Sim / Supervisors}};
 
   % Ingress (API Gateway)
-  \node[gw, right=1.0cm of client, yshift=-0.9cm] (apigw) {Amazon API Gateway\\{\tiny\color{gray!75!black}HTTP API v2 (\texttt{qrgdidp9te})\\[-1pt]TLS Termination \& CORS}};
+  \node[gw, right=1.0cm of client, yshift=-0.9cm] (apigw) {Amazon API Gateway\\{\tiny\color{gray!75!black}HTTP API v2 (\texttt{qrgdidp9te})\\[-1pt]TLS Termination}};
 
   % Private Network Integration (VPC Link + Internal ALB)
   \node[privnet, right=0.8cm of apigw, yshift=0.65cm] (vpclink) {API Gateway VPC Link\\{\tiny\color{gray!75!black}\texttt{aws\_apigatewayv2\_vpc\_link}\\[-1pt]Private Subnet Integration}};
@@ -147,7 +147,7 @@ The cloud infrastructure is provisioned through modular Terraform configurations
   % ECS Compute Core (Middle)
   \node[ecs, right=0.9cm of vpclink, yshift=-0.65cm] (ecs) {};
   \node[anchor=north, font=\sffamily\scriptsize\bfseries\color{teal!90!black}, yshift=-4pt] at (ecs.north) {ECS Fargate Service Core};
-  \node[anchor=north, font=\sffamily\tiny\color{gray!70!black}, yshift=-13pt] at (ecs.north) {\texttt{nimbus-ds252-service} (private IP:8000)};
+  \node[anchor=north, font=\sffamily\tiny\color{gray!70!black}, yshift=-13pt] at (ecs.north) {\texttt{nimbus-ds252-service} (:8000, ALB-only ingress)};
   
   \node[subnode, below=0.80cm of ecs.north] (ecs1) {\textbf{\texttt{server.py}} (\texttt{\_STATE\_LOCK}, Dedupe)};
   \node[subnode, below=0.10cm of ecs1] (ecs2) {Orchestrator, Allocator \& Policy Engine};
@@ -156,7 +156,7 @@ The cloud infrastructure is provisioned through modular Terraform configurations
   % Backends (Right)
   \node[backend, right=1.2cm of ecs, yshift=1.3cm] (bedrock) {Amazon Bedrock (Nova-Lite)\\{\tiny\color{gray!75!black}Converse API Tool Calling\\[-1pt]\texttt{apac.amazon.nova-lite-v1:0}}};
   \node[backend, right=1.2cm of ecs] (dynamo) {Amazon DynamoDB\\{\tiny\color{gray!75!black}5 Pay-Per-Request Tables\\[-1pt]Tasks, Leases, State, Logs, Status}};
-  \node[backend, right=1.2cm of ecs, yshift=-1.3cm] (sqs) {Amazon SQS (Escalations)\\{\tiny\color{gray!75!black}Queue: \texttt{nimbus-ds252-escalations}\\[-1pt]Edge Blockage Alert Buffering}};
+  \node[backend, right=1.2cm of ecs, yshift=-1.3cm] (sqs) {Amazon SQS (Escalations)\\{\tiny\color{gray!75!black}Queue: \texttt{nimbus-ds252-escalations}\\[-1pt]Edge-message queue (polled)}};
 
   % Background Boxes
   \begin{scope}[on background layer]
@@ -168,7 +168,7 @@ The cloud infrastructure is provisioned through modular Terraform configurations
     % VPC Boundary around VPC Link, ALB, and ECS
     \node[draw=teal!35, fill=vpcbg, rounded corners=3pt, line width=0.5pt,
           fit=(vpclink.north west) (alb.south west) (ecs.north east) (ecs.south east), inner sep=6pt] (vpc) {};
-    \node[font=\sffamily\tiny\bfseries\color{teal!70!black}, anchor=north, yshift=-1pt] at (vpc.south) {Amazon VPC (\texttt{10.20.0.0/16}, Private Subnets, No Public IP)};
+    \node[font=\sffamily\tiny\bfseries\color{teal!70!black}, anchor=north, yshift=-1pt] at (vpc.south) {Amazon VPC (\texttt{10.20.0.0/16}; task public IP for egress only, no NAT)};
   \end{scope}
 
   % Arrows from Clients to Ingress
@@ -205,9 +205,10 @@ The cloud infrastructure is provisioned through modular Terraform configurations
 \vspace{-6pt}
 
 \begin{itemize}
-  \item \textbf{ECS Fargate (\texttt{nimbus-ds252-cluster} / \texttt{nimbus-ds252-service}):} Runs container \texttt{nimbus-app} on \texttt{linux/amd64} with 512 CPU units and 1024 MB RAM, deployed in private subnets \textbf{without} public IP assignment (\texttt{assign\_public\_ip = false}). Tasks receive traffic exclusively via target group attachments from the internal ALB, with ingress restricted to the ALB security group on port 8000. Application secrets (\texttt{NIMBUS\_*\_TOKEN}) are injected dynamically into the container environment from AWS Secrets Manager.
-  \item \textbf{Amazon API Gateway (\texttt{qrgdidp9te}) \& Private VPC Link:} HTTP API v2 providing public HTTPS termination. Integrations use a private \texttt{VPC\_LINK} (\texttt{aws\_apigatewayv2\_vpc\_link.main}) routing traffic into an internal Application Load Balancer (\texttt{aws\_lb.internal}) listening on port 80 across private subnets, completely eliminating the need for public IPs on ECS tasks.
-  \item \textbf{Deployment Identification \& Local Safety:} Live AWS identifiers (\texttt{930124786284}, \texttt{qrgdidp9te}) document the evaluated cloud target. Local execution and test runners default strictly to local cloud (\texttt{NIMBUS\_LOCAL\_CLOUD=1}) to avoid inadvertent access to production resources.
+  \item \textbf{ECS Fargate (\texttt{nimbus-ds252-service}), as defined:} Container \texttt{nimbus-app} (\texttt{linux/amd64}, 512 CPU units, 1024 MB). With the default \texttt{egress\_mode = "public\_ip"} the subnets route to an internet gateway and each task gets a public IP for egress only (no NAT, no VPC endpoints); inbound port 8000 is allowed only from the internal ALB. The four \texttt{NIMBUS\_*\_TOKEN} values come from Secrets Manager and must be written there before a task can start.
+  \item \textbf{API Gateway \& VPC Link, as defined:} HTTP API v2 (public HTTPS) with a \texttt{VPC\_LINK} integration to the internal ALB (\texttt{aws\_lb.internal}) on port 80; no authorizer or throttling, \texttt{server.py} authenticates (fail-closed bearer tokens per role).
+  \item \textbf{What is deployed (7 Nov; inspected 12 Nov 2026):} an older image (\texttt{hospital-sim6-r2fix}) without fail-closed auth or tokens, so all routes but \texttt{/fault} and \texttt{/llm/outage} were open. API Gateway proxies over the internet to a hard-coded \texttt{http://<task IP>:8000} (no VPC link or ALB), and the task's security group accepts port 8000 from anywhere. No DLQ; the alarm has no action; the C2 stack (\texttt{xkczmnuqla}) is outside Terraform. See \texttt{docs/aws-integration-audit.md}.
+  \item \textbf{Local Safety:} \texttt{run\_all.sh} defaults to the local cloud, but the edge supervisor (\texttt{edge/run\_supervisor.py}) and the experiment scripts T1, T3 and T5--T8 still default to the deployed endpoints unless \texttt{NIMBUS\_CLOUD\_URL} (or \texttt{CLOUD\_C1}, \texttt{CLOUD\_C2}) is set.
   \item \textbf{Amazon DynamoDB (Pay-Per-Request Tables):}
   \begin{itemize}
     \item \texttt{nimbus-ds252-tasks}: Stores task metadata, status, request text, and current lease state.
@@ -216,7 +217,7 @@ The cloud infrastructure is provisioned through modular Terraform configurations
     \item \texttt{nimbus-ds252-decision\_log}: Immutable timeline of decisions and raw event inputs/outputs for auditability.
     \item \texttt{nimbus-ds252-robot\_status}: Records real-time robot check-in status, battery levels, and telemetry.
   \end{itemize}
-  \item \textbf{Amazon SQS (\texttt{nimbus-ds252-escalations}):} Buffers critical edge escalation events and operator alerts when automated resolution is blocked.
+  \item \textbf{Amazon SQS (\texttt{nimbus-ds252-escalations}):} Polled by the cloud (\texttt{cloud/sqs\_consumer.py}); nothing publishes to it (edges use HTTP; IoT Core has 0 things), and the Terraform DLQ is not deployed.
   \item \textbf{Amazon Bedrock (\texttt{apac.amazon.nova-lite-v1:0}):} Serverless foundation model accessed via the Converse API for semantic parsing and structured parameter extraction.
 \end{itemize}
 

@@ -48,3 +48,11 @@ logs_standin/
 temp.sh
 *.tfstate
 *.tfstate.*
+
+# Secrets: local environment files and Terraform variable files (examples stay tracked)
+.env
+.env.*
+!.env.example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example

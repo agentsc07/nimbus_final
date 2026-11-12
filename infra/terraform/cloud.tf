@@ -29,8 +29,9 @@ resource "aws_dynamodb_table" "state" {
 # ---------------------------------------------------------------------------
 # Egress. The skeleton's private subnets had no route out, so the Fargate task
 # could neither pull its image nor reach Bedrock. "public_ip" (default) is the
-# cheapest working option: an internet gateway and a public IP per task, with
-# nothing listening (no inbound security-group rules). A NAT gateway costs
+# cheapest working option: an internet gateway and a public IP per task
+# (main.tf local.assign_public_ip follows egress_mode), with inbound traffic
+# allowed only from the internal ALB's security group. A NAT gateway costs
 # roughly $32+/month, so it is deliberately not the default.
 # ---------------------------------------------------------------------------
 
@@ -69,8 +70,8 @@ resource "aws_route_table_association" "egress_b" {
 # - Bedrock: Converse needs bedrock:InvokeModel. Cross-region inference
 #   profiles route to other regions, so the foundation-model ARN is region-wild
 #   and the profile ARN is account-scoped.
-# - IoT topics exactly as contracts/topics.md names them (P4's iot_topics
-#   locals use a different pattern, which would deny these publishes).
+# - IoT topics exactly as contracts/topics.md names them, with `*` for the
+#   cluster segment (IAM treats the MQTT wildcard `+` as a literal).
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role_policy" "task_p3" {
@@ -143,13 +144,24 @@ resource "aws_iam_role_policy" "task_p3" {
         Action   = ["bedrock:Retrieve"]
         Resource = "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:knowledge-base/*"
       },
+      # iot:Receive is checked against topic/ ARNs, iot:Subscribe against topicfilter/ ARNs; one statement for
+      # both on topic/ ARNs denied every subscription.
       {
-        Sid    = "IotSubscribe"
+        Sid    = "IotReceive"
         Effect = "Allow"
-        Action = ["iot:Subscribe", "iot:Receive"]
+        Action = ["iot:Receive"]
         Resource = [
           for t in ["escalation", "checkin"] :
           "arn:aws:iot:${var.aws_region}:${data.aws_caller_identity.current.account_id}:topic/nimbus/*/${t}"
+        ]
+      },
+      {
+        Sid    = "IotSubscribe"
+        Effect = "Allow"
+        Action = ["iot:Subscribe"]
+        Resource = [
+          for t in ["escalation", "checkin"] :
+          "arn:aws:iot:${var.aws_region}:${data.aws_caller_identity.current.account_id}:topicfilter/nimbus/*/${t}"
         ]
       },
       {
@@ -212,6 +224,11 @@ resource "aws_budgets_budget" "monthly" {
 # built and pushed by scripts/build_push.sh. First deploy: apply just the repository
 # (`terraform apply -target=aws_ecr_repository.app`), push the image, then apply the rest,
 # otherwise the ECS service starts before there is an image to pull.
+#
+# Deploy a specific build: build_push.sh tags every image with the git commit and prints the
+# `-var app_image=...` to apply. Tags stay MUTABLE because the same script also moves `latest`, and an
+# IMMUTABLE repository rejects every push of `latest` after the first. Pin deployments by commit tag or
+# by digest instead of relying on `latest`.
 # ---------------------------------------------------------------------------
 
 resource "aws_ecr_repository" "app" {

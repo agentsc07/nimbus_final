@@ -1,3 +1,13 @@
+"""N5: selective sharing (FR-11): which clusters MapState.affected_clusters says to tell about a map event.
+
+    python results/final/N5/run_n5.py
+
+Per seed (1 to 10) the seed's RNG draws 30 events (zone from all 15 topology nodes, event type) and the live leases
+(each cluster's lease routes through 2 to 4 random zones, so a lease can cross into the other wing). The system under
+test is cloud.mapstate.MapState.affected_clusters; the expected set is computed from the FR-11 rule (cluster area or
+shared area, or a live lease routed through the zone) directly from the pack's topology document.
+"""
+
 import os
 import json
 import numpy as np
@@ -10,7 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 sys.path.insert(0, os.getcwd())
 from scripts.p4_shared import (
     COLOR_C1, COLOR_C2, COLOR_C3, COLOR_PASS_BAR,
-    setup_matplotlib_style, save_plots, write_env_json, write_readme, GIT_COMMIT
+    setup_matplotlib_style, save_plots, write_env_json, write_readme
 )
 from cloud.pack import Pack
 from cloud.topology import Topology
@@ -52,19 +62,8 @@ def run_n5():
     mapstate = MapState(topo)
     clusters = sorted(list(topo.cluster_area.keys())) # ['east-wing', 'west-wing']
 
-    # 30 scripted events across diverse topological zones
     all_zones = sorted(list(set(topo.nodes)))
-    # Pick 30 varied zone events
-    scripted_zones = [
-        "east_mid_hall", "west_south_hall", "north_hall", "east_south_hall_corner",
-        "west_south_hall_corner", "south_equipment_approach", "south_room_approach",
-        "east_north_gate", "west_north_gate", "east_mid_hall",
-        "west_south_hall", "north_hall", "east_south_hall_corner", "west_south_hall_corner",
-        "south_equipment_approach", "east_mid_hall", "west_south_hall", "north_hall",
-        "east_north_gate", "south_room_approach", "east_south_hall_corner", "west_south_hall_corner",
-        "east_mid_hall", "west_south_hall", "north_hall", "south_equipment_approach",
-        "east_north_gate", "south_room_approach", "east_mid_hall", "west_south_hall"
-    ]
+    EVENTS_PER_SEED = 30
 
     event_types = ["corridor_blocked", "gate_closed", "hazard_spill", "isolation_declared", "high_congestion"]
 
@@ -82,27 +81,24 @@ def run_n5():
         rng = np.random.default_rng(seed * 77 + 13)
         seed_tp, seed_fp, seed_fn, seed_tn = 0, 0, 0, 0
 
-        # Create active leases for some background tasks
+        # Live leases for this seed: each cluster's lease routes through 2 to 4 zones drawn from the whole map.
         live_leases = [
-            {"cluster_id": "east-wing", "allowed_zones": ["east_mid_hall", "north_hall", "east_north_gate"]},
-            {"cluster_id": "west-wing", "allowed_zones": ["west_south_hall", "north_hall", "south_room_approach"]},
+            {"cluster_id": cid, "allowed_zones": sorted(rng.choice(all_zones, size=int(rng.integers(2, 5)), replace=False).tolist())}
+            for cid in clusters
         ]
         repo = MockRepo(live_leases)
+        seed_zones = rng.choice(all_zones, size=EVENTS_PER_SEED, replace=True).tolist()
+        seed_types = rng.choice(event_types, size=EVENTS_PER_SEED, replace=True).tolist()
 
-        for event_idx, zone in enumerate(scripted_zones):
-            ev_type = event_types[event_idx % len(event_types)]
-            
+        for event_idx, (zone, ev_type) in enumerate(zip(seed_zones, seed_types)):
             # Independent ground truth: derived directly from raw pack cluster areas and active leases
             ground_truth_affected = independent_ground_truth(zone, live_leases, pack)
-            
+
             # System under test: MapState.affected_clusters
             system_predicted_clusters = mapstate.affected_clusters(zone, repo, now)
-            
-            # Selective sharing system decision (FR-11):
             informed_clusters = list(system_predicted_clusters)
-
-            operator_informed = True
-            requester_informed = True if ev_type in ["corridor_blocked", "isolation_declared"] else False
+            cross_wing_lease = any(zone in l["allowed_zones"] and topo.nodes[zone]["area"] not in (topo.cluster_area[l["cluster_id"]], "shared")
+                                   for l in live_leases)
 
             for c in clusters:
                 is_affected = (c in ground_truth_affected)
@@ -130,8 +126,7 @@ def run_n5():
                     "is_affected": is_affected,
                     "is_informed": is_informed,
                     "outcome": outcome,
-                    "operator_informed": operator_informed,
-                    "requester_informed": requester_informed,
+                    "lease_crosses_wing_here": cross_wing_lease,
                     "source": "simulated"
                 })
 
@@ -145,7 +140,10 @@ def run_n5():
 
         summary_rows.append({
             "seed": seed,
-            "events_run": len(scripted_zones),
+            "events_run": len(seed_zones),
+            "unique_zones": len(set(seed_zones)),
+            "unique_events_zone_type": len(set(zip(seed_zones, seed_types))),
+            "leases": json.dumps({l["cluster_id"]: l["allowed_zones"] for l in live_leases}),
             "clusters_evaluated": len(clusters),
             "tp": seed_tp,
             "fp": seed_fp,
@@ -153,7 +151,6 @@ def run_n5():
             "tn": seed_tn,
             "recall_pct": round(recall * 100.0, 2),
             "precision_pct": round(precision * 100.0, 2),
-            "operator_notified_pct": 100.0,
             "source": "simulated"
         })
 
@@ -167,8 +164,13 @@ def run_n5():
     sum_path = os.path.join(out_dir, "summary.csv")
     df_sum.to_csv(sum_path, index=False)
 
-    overall_recall = total_tp / (total_tp + total_fn) * 100.0
-    overall_precision = total_tp / (total_tp + total_fp) * 100.0
+    overall_recall = total_tp / (total_tp + total_fn) * 100.0 if (total_tp + total_fn) else 100.0
+    overall_precision = total_tp / (total_tp + total_fp) * 100.0 if (total_tp + total_fp) else 100.0
+    n_events = int(df_events["event_id"].nunique())
+    unique_events = int(df_events[["zone", "event_type"]].drop_duplicates().shape[0])
+    unique_zones = int(df_events["zone"].nunique())
+    unique_scenarios = int(df_sum.apply(lambda r: (r["leases"],), axis=1).nunique())
+    cross_wing_events = int(df_events[df_events["lease_crosses_wing_here"]]["event_id"].nunique())
 
     # --- PLOTS ---
     # Plot 1: Confusion Matrix
@@ -180,10 +182,10 @@ def run_n5():
         for j in range(2):
             val = cm[i, j]
             label = f"{val}\n("
-            if i == 0 and j == 0: label += f"TP: {val/(total_tp+total_fn)*100:.1f}%)"
-            elif i == 0 and j == 1: label += f"FN: 0.0%)"
-            elif i == 1 and j == 0: label += f"FP: {val/(total_fp+total_tn)*100:.1f}%)"
-            else: label += f"TN: {val/(total_fp+total_tn)*100:.1f}%)"
+            if i == 0 and j == 0: label += f"TP: {val/max(1, total_tp+total_fn)*100:.1f}%)"
+            elif i == 0 and j == 1: label += f"FN: {val/max(1, total_tp+total_fn)*100:.1f}%)"
+            elif i == 1 and j == 0: label += f"FP: {val/max(1, total_fp+total_tn)*100:.1f}%)"
+            else: label += f"TN: {val/max(1, total_fp+total_tn)*100:.1f}%)"
             ax.text(j, i, label, ha="center", va="center", color="black", fontsize=10, fontweight="bold")
 
     ax.set_xticks([0, 1])
@@ -222,20 +224,33 @@ def run_n5():
     ax.set_ylim(0, 115)
     ax.legend(loc="lower right")
     ax.grid(axis="y")
-    ax.set_title("N5: Recall & Precision Across Topological Events")
+    ax.set_title(f"N5: Recall & precision by event type ({n_events} sampled events, 10 seeds)")
     save_plots(fig, plot_dir, "precision_recall")
 
     # Write env.json
-    write_env_json(out_dir)
+    env = write_env_json(out_dir, experiment="N5", title="Selective sharing", prd="FR-11", source="simulated",
+                         target="in-process cloud.mapstate.MapState on pack hospital_sim6, sampled events", model=None,
+                         seeds=list(range(1, 11)))
 
-    # Write README.md (5 lines)
-    claim = "Selective sharing achieves 100% recall across 30 scripted events with high precision."
-    pass_bar = "PRD Pass Bar: Recall 100% (every affected cluster told) (FR-11); high precision (few unaffected)."
-    cmd = "python results/final/N5/run_n5.py"
-    res_line = f"PASS: Recall = {overall_recall:.1f}% (FN=0, 100% pass bar met); Precision = {overall_precision:.1f}% across 300 evaluations"
-    write_readme(out_dir, claim, pass_bar, cmd, GIT_COMMIT, res_line)
+    verdict_pass = total_fn == 0
+    measured = (f"recall {overall_recall:.1f}% (TP {total_tp}, FN {total_fn}), precision {overall_precision:.1f}% (FP {total_fp}) "
+                f"over {len(df_events)} cluster decisions for {n_events} sampled events; {unique_events} unique (zone, type) events, "
+                f"{unique_zones}/{len(all_zones)} zones, {unique_scenarios} distinct lease layouts, {cross_wing_events} events in a zone a lease from the other wing routes through")
+    notes = [
+        "The seed's RNG now draws the events (zone and type) and the live leases; earlier versions ran one fixed list of 30 "
+        "events ten times, so the ten seeds were copies.",
+        "The expected set encodes the FR-11 rule (a cluster is affected if the zone is in its area or a shared area, or a live "
+        "lease of it routes through the zone) straight from the pack's topology document, independently of MapState's code. "
+        "This checks the implementation against the rule, not whether the rule tells the right people.",
+        "Operator and requester notification are not evaluated (earlier versions reported a constant 100% for them).",
+        "Verdict rule: PASS iff no affected cluster is missed (FN = 0); precision is reported.",
+    ]
+    write_readme(out_dir, exp_id="N5", title="Selective sharing",
+                 claim="MapState tells every affected cluster about a map event (recall 100%) and few unaffected ones.",
+                 pass_bar="Recall 100% (every affected cluster told) (FR-11); high precision (few unaffected).",
+                 measured=measured, verdict="PASS" if verdict_pass else "FAIL", env=env, notes=notes)
 
-    print("Completed N5 experiment package successfully.")
+    print(f"N5: recall {overall_recall:.1f}%, precision {overall_precision:.1f}%, {unique_events} unique events -> {'PASS' if verdict_pass else 'FAIL'}")
 
 if __name__ == "__main__":
     run_n5()

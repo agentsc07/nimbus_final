@@ -16,6 +16,21 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # Remote state. Today the state is a local terraform.tfstate on one workstation with no locking, so two people
+  # applying at once can corrupt it. To move it (not done in this change):
+  #   1. create, outside this configuration, an S3 bucket (versioning on, public access blocked) and a DynamoDB table
+  #      whose partition key is the string `LockID`;
+  #   2. uncomment the block below and fill in the two names;
+  #   3. run `terraform init -migrate-state` and confirm the copy.
+  # On Terraform >= 1.11, `use_lockfile = true` can replace `dynamodb_table`.
+  # backend "s3" {
+  #   bucket         = "<state-bucket>"
+  #   key            = "nimbus/ds252/terraform.tfstate"
+  #   region         = "ap-south-1"
+  #   dynamodb_table = "<lock-table>"
+  #   encrypt        = true
+  # }
 }
 
 provider "aws" {
@@ -25,8 +40,14 @@ provider "aws" {
 locals {
   name_prefix = "nimbus-${var.project_name}"
 
-  # Cloud-edge messaging (PRD Fig 4, component 6/7). Five topic patterns
-  # connecting the cloud and edge clusters per contracts/topics.md.
+  # Tasks need a public IP to reach ECR, Bedrock, Secrets Manager and DynamoDB through the internet gateway, because
+  # this configuration has no NAT gateway and no VPC endpoints. var.assign_public_ip overrides the derived value.
+  assign_public_ip = var.assign_public_ip != null ? var.assign_public_ip : var.egress_mode == "public_ip"
+
+  # Cloud-edge messaging (PRD Fig 4, component 6/7): MQTT topic filters for
+  # clients, per contracts/topics.md. These use the MQTT wildcard `+`, which IAM
+  # and IoT policies treat as a literal character, so policy ARNs below spell
+  # the cluster segment as `*` (or a policy variable) instead.
   iot_topics = {
     lease      = "nimbus/+/lease"
     escalation = "nimbus/+/escalation"
@@ -38,9 +59,11 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# Network placeholder: one VPC, two private subnets for the Fargate service.
-# Person 3: add NAT gateways / VPC endpoints (Bedrock, S3, DynamoDB) when the
-# real deployment is sized.
+# Network: one VPC, two subnets for the Fargate service. The subnets are named
+# "private", but with egress_mode = "public_ip" (the default) cloud.tf routes
+# them to an internet gateway and the tasks get a public IP (local.assign_public_ip).
+# Inbound traffic to the tasks is still allowed only from the internal ALB's
+# security group. There is no NAT gateway and there are no VPC endpoints.
 # ---------------------------------------------------------------------------
 
 resource "aws_vpc" "main" {
@@ -249,7 +272,7 @@ resource "aws_ecs_service" "app" {
   network_configuration {
     subnets          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
     security_groups  = [aws_security_group.app.id]
-    assign_public_ip = var.assign_public_ip # gated behind variable; defaults to false for security
+    assign_public_ip = local.assign_public_ip # true when egress_mode = "public_ip" unless var.assign_public_ip overrides it
   }
 
   load_balancer {
@@ -327,6 +350,12 @@ resource "aws_sqs_queue" "escalations" {
   visibility_timeout_seconds = 30
 }
 
+# EventBridge bus, rule and target: no code publishes to this bus (nothing in the
+# repository calls events:PutEvents), and the escalations queue has no queue
+# policy that would let EventBridge deliver to it. Re-planning on missed
+# check-ins happens in the application's ticker, not through these resources.
+# They are kept so that applying this configuration does not delete live
+# resources; do not rely on them.
 resource "aws_cloudwatch_event_bus" "main" {
   name = "${local.name_prefix}-bus"
 }
@@ -403,6 +432,42 @@ resource "aws_s3_bucket" "outputs" {
   force_destroy = false
 }
 
+# Result evidence: never public, owner-enforced, encrypted at rest, versioned (an overwrite keeps the old object).
+# The live buckets already have the first three (verified read-only on 12 Nov); these resources make them explicit.
+resource "aws_s3_bucket_public_access_block" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # ---------------------------------------------------------------------------
 # IAM: least privilege (NFR-5). The task role can touch exactly the tables,
 # queue, bucket and topics created above, plus Bedrock invoke. No wildcards
@@ -469,14 +534,14 @@ resource "aws_iam_role_policy" "task_least_privilege" {
         Action   = ["bedrock:InvokeModel"]
         Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/*"
       },
+      # Connect only. The topic-level grants are the direction-specific IotPublish, IotReceive and
+      # IotSubscribe statements in cloud.tf (the old topic ARNs here used MQTT `+`, which IAM reads as a
+      # literal character, so they granted nothing).
       {
-        Sid    = "IotTopics"
-        Effect = "Allow"
-        Action = ["iot:Connect", "iot:Publish", "iot:Subscribe"]
-        Resource = concat(
-          [for pattern in values(local.iot_topics) : "arn:aws:iot:${var.aws_region}:*:topic/${pattern}"],
-          ["arn:aws:iot:${var.aws_region}:*:client/${local.name_prefix}-*"]
-        )
+        Sid      = "IotConnect"
+        Effect   = "Allow"
+        Action   = ["iot:Connect"]
+        Resource = ["arn:aws:iot:${var.aws_region}:*:client/${local.name_prefix}-*"]
       },
     ])
   })
@@ -517,9 +582,19 @@ resource "aws_iam_role_policy" "execution_secrets" {
 
 
 # ---------------------------------------------------------------------------
-# AWS IoT Core skeleton: IoT Policy for edge robot clusters.
-# Note: AWS IoT Things, X.509 certificates, and certificate attachments are
-# provisioned at device onboarding / deployment time, not baked statically.
+# AWS IoT Core skeleton: IoT Policy for edge robot clusters. NOT IN USE: the
+# live account has 0 things and 0 certificates, the edge has no MQTT
+# client, and the cloud's paho client (mqtt_transport.py) connects in plaintext
+# on port 1883 without credentials, which AWS IoT Core does not accept.
+#
+# Each edge cluster may act only as itself. Naming requirement for onboarding:
+# the IoT thing name must equal the cluster id (for example `east-wing`), the
+# cluster's X.509 certificate must be attached to that thing, and the MQTT
+# client id must be the same name. `$${iot:Connection.Thing.ThingName}` is an
+# IoT policy variable (the `$$` stops Terraform from interpolating it).
+# Directions follow contracts/topics.md: escalation and checkin are edge ->
+# cloud (Publish); lease, renewal, probe and notice are cloud -> edge (Receive
+# on topic/ ARNs, Subscribe on topicfilter/ ARNs).
 # ---------------------------------------------------------------------------
 
 resource "aws_iot_policy" "edge_cluster" {
@@ -531,27 +606,30 @@ resource "aws_iot_policy" "edge_cluster" {
       {
         Effect   = "Allow"
         Action   = ["iot:Connect"]
-        Resource = ["arn:aws:iot:${var.aws_region}:*:client/nimbus-*"]
+        Resource = ["arn:aws:iot:${var.aws_region}:*:client/$${iot:Connection.Thing.ThingName}"]
       },
       {
         Effect = "Allow"
         Action = ["iot:Publish"]
         Resource = [
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/escalation",
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/checkin",
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/probe"
+          for t in ["escalation", "checkin"] :
+          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/$${iot:Connection.Thing.ThingName}/${t}"
         ]
       },
       {
         Effect = "Allow"
-        Action = ["iot:Receive", "iot:Subscribe"]
+        Action = ["iot:Receive"]
         Resource = [
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/lease",
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/renewal",
-          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/*/notice",
-          "arn:aws:iot:${var.aws_region}:*:topicfilter/nimbus/*/lease",
-          "arn:aws:iot:${var.aws_region}:*:topicfilter/nimbus/*/renewal",
-          "arn:aws:iot:${var.aws_region}:*:topicfilter/nimbus/*/notice"
+          for t in ["lease", "renewal", "probe", "notice"] :
+          "arn:aws:iot:${var.aws_region}:*:topic/nimbus/$${iot:Connection.Thing.ThingName}/${t}"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["iot:Subscribe"]
+        Resource = [
+          for t in ["lease", "renewal", "probe", "notice"] :
+          "arn:aws:iot:${var.aws_region}:*:topicfilter/nimbus/$${iot:Connection.Thing.ThingName}/${t}"
         ]
       }
     ]
@@ -565,6 +643,60 @@ resource "aws_iot_policy" "edge_cluster" {
 resource "aws_s3_bucket" "static_app" {
   bucket        = "${local.name_prefix}-static-app"
   force_destroy = false
+}
+
+resource "aws_s3_bucket_public_access_block" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Only the CloudFront distribution (through its origin access control) may read the static app; the bucket stays
+# private. Without this policy an enabled distribution would get 403 from S3.
+data "aws_iam_policy_document" "static_app_oac" {
+  statement {
+    sid       = "AllowCloudFrontOAC"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.static_app.arn}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.static_app.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+  policy = data.aws_iam_policy_document.static_app_oac.json
 }
 
 resource "aws_cloudfront_origin_access_control" "static_app" {
@@ -630,19 +762,49 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 }
 
 # ---------------------------------------------------------------------------
-# CloudWatch Alarm skeleton: missed check-in alerts (PRD NFR-2, Sec. 7).
-# Monitors Nimbus/App MissedCheckins metric emitted via EMF.
+# CloudWatch alarm: missed check-ins (PRD NFR-2, Sec. 7).
+# server.py emit_metrics() prints one CloudWatch Embedded Metric Format line
+# about every 60 s (NIMBUS_EMF=1, set in the task definition): namespace
+# `Nimbus`, dimensions Service=nimbus-cloud and Pack=<active pack>, metrics
+# QueueDepth, LiveLeases, LlmCallsSinceLast, HealthyClusters (plus
+# RequestToLeaseP95 / LlmLatencyP95 once observed). A cluster that stops
+# checking in drops out of HealthyClusters. Missing data counts as breaching:
+# no metric means the service is not running or not emitting, so scaling the
+# service to 0 also puts this alarm into ALARM.
+# The alarm only notifies. Re-planning after missed check-ins is done by the
+# application's ticker, not by this alarm.
 # ---------------------------------------------------------------------------
+
+resource "aws_sns_topic" "alerts" {
+  count = var.alert_email == "" ? 0 : 1
+  name  = "${local.name_prefix}-alerts"
+}
+
+# E-mail subscriptions stay "pending confirmation" until the recipient clicks the link AWS sends.
+resource "aws_sns_topic_subscription" "alerts_email" {
+  count     = var.alert_email == "" ? 0 : 1
+  topic_arn = aws_sns_topic.alerts[0].arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
 
 resource "aws_cloudwatch_metric_alarm" "missed_checkin" {
   alarm_name          = "${local.name_prefix}-missed-checkin-alarm"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "MissedCheckins"
-  namespace           = "Nimbus/App"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = 0
-  alarm_description   = "Triggered when an edge robot cluster misses its heartbeat checkin deadline"
-  treat_missing_data  = "notBreaching"
+  alarm_description   = "Fewer edge clusters are checking in than expected (Nimbus HealthyClusters below var.expected_clusters), or the service stopped emitting metrics"
+  namespace           = "Nimbus"
+  metric_name         = "HealthyClusters"
+  statistic           = "Minimum"
+  period              = 120
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+  comparison_operator = "LessThanThreshold"
+  threshold           = var.expected_clusters
+  treat_missing_data  = "breaching"
+  alarm_actions       = aws_sns_topic.alerts[*].arn
+  ok_actions          = aws_sns_topic.alerts[*].arn
+
+  dimensions = {
+    Service = "nimbus-cloud"
+    Pack    = var.metrics_pack
+  }
 }

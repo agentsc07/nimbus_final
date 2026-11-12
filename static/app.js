@@ -11,11 +11,56 @@ let selectedTaskId = null;
 let demoControls = false;
 let c3StructuredForms = false;
 
+/* Authentication. A token-protected cloud (the deployed one) rejects calls without
+   `Authorization: Bearer <token>`. Open the app as /#token=<requester token> once (the
+   fragment never reaches the server) or paste the token into the banner; it is kept in
+   sessionStorage for this tab only. A local cloud with NIMBUS_AUTH_DISABLED=1 needs none. */
+const TOKEN_KEY = "nimbus.token.requester";
+function readToken() { try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
+function saveToken(t) {
+  try { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* storage blocked */ }
+}
+(function takeTokenFromHash() {
+  const m = location.hash.match(/(?:^#|&)token=([^&]+)/);
+  if (m) {
+    saveToken(decodeURIComponent(m[1]));
+    history.replaceState(null, "", location.pathname + location.search);   // keep the token out of history
+  }
+})();
+
+function showAuthBanner(status) {
+  if (document.getElementById("auth-banner")) return;
+  const bar = document.createElement("div");
+  bar.id = "auth-banner";
+  bar.setAttribute("role", "alert");
+  bar.style.cssText = "position:sticky;top:0;z-index:50;background:#7a1f1f;color:#fff;padding:8px 12px;font:14px system-ui,sans-serif;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+  const msg = document.createElement("span");
+  msg.textContent = status === 403
+    ? "This token is not allowed to do that (403)."
+    : "This server requires a token (401). Paste your requester token:";
+  const input = document.createElement("input");
+  input.type = "password"; input.id = "auth-token-input"; input.placeholder = "requester token"; input.autocomplete = "off";
+  const save = document.createElement("button");
+  save.textContent = "Use token";
+  save.onclick = () => { saveToken(input.value.trim()); location.reload(); };
+  const clear = document.createElement("button");
+  clear.textContent = "Clear token";
+  clear.onclick = () => { saveToken(""); location.reload(); };
+  bar.append(msg, input, save, clear);
+  document.body.prepend(bar);
+}
+
 async function api(method, path, body) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json" };
+  const token = readToken();
+  if (token) headers.Authorization = "Bearer " + token;
+  const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
-  return { status: res.status, data: await res.json() };
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (res.status === 401 || res.status === 403) showAuthBanner(res.status);
+  return { status: res.status, data };
 }
 
 function msgId() {
@@ -38,8 +83,11 @@ function esc(s) {
   }[c]));
 }
 
+let lastRenderedStatus = null;   // status of the task shown in the detail panel (polling re-renders on change)
+
 async function refreshTasks() {
-  const { data } = await api("GET", "/tasks");
+  const { status, data } = await api("GET", "/tasks");
+  if (status !== 200 || !Array.isArray(data.tasks)) return null;
   $("task-count").textContent = `(${data.tasks.length})`;
   const list = $("task-list");
   list.innerHTML = "";
@@ -51,6 +99,7 @@ async function refreshTasks() {
     li.onclick = () => selectTask(t.task_id);
     list.appendChild(li);
   }
+  return data.tasks;
 }
 
 async function selectTask(taskId) {
@@ -61,12 +110,15 @@ async function selectTask(taskId) {
 
 async function renderDetail() {
   const box = $("detail");
-  if (!selectedTaskId) {
+  const id = selectedTaskId;     // a slower response for a task no longer selected must not be drawn
+  if (!id) {
     box.innerHTML = `<p class="muted">Select a task on the left. Nothing is lost on refresh: state lives in the API.</p>`;
     return;
   }
-  const { status, data: task } = await api("GET", `/tasks/${selectedTaskId}`);
+  const { status, data: task } = await api("GET", `/tasks/${encodeURIComponent(id)}`);
+  if (id !== selectedTaskId) return;
   if (status === 404) { box.innerHTML = `<p class="muted">Task not found.</p>`; return; }
+  if (status !== 200) { box.innerHTML = `<p class="muted">Could not load the task (HTTP ${esc(status)}).</p>`; return; }
 
   let html = `<h3>${esc(task.task_id)} ${chip(task.status)}</h3>
     <p class="muted">“${esc(task.request_text)}”</p>`;
@@ -94,13 +146,15 @@ async function renderDetail() {
     html += `<p><button class="secondary" id="finish-btn">Demo: edge sends OUTPUT_READY</button></p>`;
   }
 
-  const { data: tl } = await api("GET", `/tasks/${selectedTaskId}/timeline`);
+  const { data: tl } = await api("GET", `/tasks/${encodeURIComponent(id)}/timeline`);
+  if (id !== selectedTaskId) return;
   html += `<h4>Decision timeline (FR-20)</h4><ol class="timeline">` +
     (tl.timeline || []).map(r =>
       `<li><strong>${esc(r.who)}</strong>: ${esc((r.output && (r.output.event || r.output.decision)) || "?")}
        <span class="muted">${esc(r.timestamp)}</span></li>`).join("") +
     `</ol>`;
   box.innerHTML = html;
+  lastRenderedStatus = task.status;
 
   const answerBtn = $("answer-btn");
   if (answerBtn) answerBtn.onclick = submitAnswer;
@@ -108,10 +162,23 @@ async function renderDetail() {
   if (finishBtn) finishBtn.onclick = simulateOutputReady;
 }
 
+/* One message_id per composed message: a retry after a timeout or a double click is then
+   recognised by the server's FR-8 dedup instead of creating a second task or answer. */
+let pendingAnswer = null;   // { taskId, text, id }
 async function submitAnswer() {
+  const btn = $("answer-btn");
   const text = $("answer").value.trim();
-  if (!text) return;
-  await api("POST", `/requests/${selectedTaskId}/answer`, { text, message_id: msgId() });
+  if (!text || (btn && btn.disabled)) return;
+  if (!pendingAnswer || pendingAnswer.taskId !== selectedTaskId || pendingAnswer.text !== text) {
+    pendingAnswer = { taskId: selectedTaskId, text, id: msgId() };
+  }
+  if (btn) btn.disabled = true;
+  try {
+    const { status } = await api("POST", `/requests/${encodeURIComponent(selectedTaskId)}/answer`, { text, message_id: pendingAnswer.id });
+    if (status < 500) pendingAnswer = null;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
   await renderDetail();
   await refreshTasks();
 }
@@ -171,13 +238,24 @@ async function simulateOutputReady() {
   await refreshTasks();
 }
 
+let pendingSend = null;   // { text, id }
 $("send").onclick = async () => {
+  const btn = $("send");
   const text = $("request-text").value.trim();
-  if (!text) return;
-  const { data } = await api("POST", "/requests", { text, message_id: msgId() });
+  if (!text || btn.disabled) return;
+  if (!pendingSend || pendingSend.text !== text) pendingSend = { text, id: msgId() };
+  btn.disabled = true;     // the model can take seconds: no second click while this one is in flight
+  let result;
+  try {
+    result = await api("POST", "/requests", { text, message_id: pendingSend.id });
+  } finally {
+    btn.disabled = false;
+  }
+  if (result.status >= 500 || result.status === 401 || result.status === 403) return;   // keep the id for a retry
+  pendingSend = null;
   $("request-text").value = "";
   await refreshTasks();
-  await selectTask(data.task_id || selectedTaskId);
+  if (result.data.task_id) await selectTask(result.data.task_id);
 };
 
 $("c3-form").onsubmit = async (event) => {
@@ -199,8 +277,18 @@ window.onhashchange = () => {
   if (location.hash.slice(1) !== selectedTaskId) selectTask(location.hash.slice(1));
 };
 
+/* Keep status, questions and results current without a manual click. The detail panel is
+   redrawn only when the selected task's status changes, so a half-typed answer is kept. */
+async function poll() {
+  const tasks = await refreshTasks();
+  if (!tasks || !selectedTaskId) return;
+  const current = tasks.find((t) => t.task_id === selectedTaskId);
+  if (current && current.status !== lastRenderedStatus) await renderDetail();
+}
+
 /* Config first: a render that ran before it would briefly show a gated control. */
 loadUiConfig().then(refreshTasks).then(() => {
   const fromHash = location.hash.slice(1);
   if (fromHash) selectTask(fromHash);
+  setInterval(() => { poll().catch(() => {}); }, 3000);
 });
