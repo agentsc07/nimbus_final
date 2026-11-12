@@ -1,100 +1,81 @@
-# Nimbus P4 Final Experiment Package: Executive Synthesis & Verification
+# Nimbus P4 Experiment Package: Network and Infrastructure (N1 to N10)
 
-**AWS Deployment:** Region `ap-south-1` | Account `930124786284` | Service `nimbus-ds252-service`  
-**Git Baseline Commit:** `29f37e7540fe7d130c845d0139dff77d8f827e78`  
-**Evaluation Scope:** Experiments N1 to N10 (Provenance, Network Outages, Idempotency, Privacy, Determinism, Scaling, Cost, UI)
+**Where it ran:** a local Windows laptop. No N experiment called AWS or Bedrock, and none ran against the deployed cloud.
+N4, N6, N8 and N10 run Nimbus code in-process on 127.0.0.1 with the rule-based stand-in model; N9 prices the call and
+token counts that C9 measured with real Bedrock.
 
----
+**Commit:** every run stamps its own `git rev-parse HEAD` (with `-dirty` when the tree had uncommitted changes), the
+command and the seeds in its `env.json`. This set was produced at `5ea3e6a-dirty` (the red-team fix branch, uncommitted).
 
-## 1. Master Experiment Results Table
-
-| Run | PRD | Verdict | Measured | Source | PRD pass bar | Command | Commit | Evidence |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **N1** (IISc Real Field Traces) | E4, FR-6 (Empirical Wi-Fi traces) | **NOT_RUN** | No genuine IISc field traces available; synthetic profiles only | `not_run` | Continuous 48h campus trace collection; RTT/loss histograms | *N/A (blocked on physical campus deployment)* | `29f37e75` | `traces/` |
-| **N2** (Poisson Outage Model) | Outage characterization & mission survival | **PASS** | KS test $p = 0.8527$; Weibull AIC = 325.4 (best fit); C1 predicted success = 87.71% [85.61%, 89.81%] | `modelled` | KS test $p \ge 0.05$; C1 predicted success inside CI of measured N3; AIC duration model | `python results/final/N2/run_n2.py` | `29f37e75` | `results/final/N2/` |
-| **N3** (Trace Replay) | E4, FR-6, NFR-2 (Network recovery) | **PASS** | C1 recovery time: 1.31 s [1.16 s, 1.45 s] (p95 = 3.40 s $\le 60$ s); C1 success = 100.0% [100.0%, 100.0%] across 720 runs | `simulated` | Recovery within 1 to 2 min (p95 $\le 60$ s); zero lost results | `python results/final/N3/run_n3.py` | `29f37e75` | `results/final/N3/` |
-| **N4** (Message Robustness) | E6, FR-8 (Dedup & ordering) | **PASS** | 0 duplicate steps executed [0.00, 0.00]; 100.0% deduplication pass rate across 500 injected messages in 10 seeded runs | `simulated` | Zero duplicate steps executed; all drops logged with reason | `python results/final/N4/run_n4.py` | `29f37e75` | `results/final/N4/` |
-| **N5** (Selective Sharing) | FR-11 (Cluster isolation) | **PASS** | Recall = 100.0% [100.0%, 100.0%] (FN = 0 across 300 evaluations); Precision = 100.0% [100.0%, 100.0%] | `simulated` | Recall = 100% (every affected cluster told); precision reported | `python results/final/N5/run_n5.py` | `29f37e75` | `results/final/N5/` |
-| **N6** (Audit Replay & Determinism) | FR-20, NFR-6 (Reproducibility) | **PASS** | 0 diff lines [0.00, 0.00] (0 diff bytes in `e6_seed_diff.txt`); 100% decision log timeline reconstruction across 10/10 seeds | `simulated` | Seeded reruns byte-identical (0 diff bytes); timelines replayable | `python results/final/N6/run_n6.py` | `29f37e75` | `results/final/N6/` |
-| **N7** (Security & Privacy Audit) | NFR-5 (Least privilege & privacy) | **PASS** | 10/10 audit checks passed; 0 unjustified IAM wildcards; 0 secrets found; 100% synthetic datasets; 0 camera frame leaks | `measured_real_system` | No IAM wildcards on data; zero secrets; 100% synthetic data; camera WAN payloads protected | `python results/final/N7/run_n7.py` | `29f37e75` | `results/final/N7/` |
-| **N8** (Scalability) | E7, NFR-3 (Fleet scaling) | **PASS** | 10-robot latency ratio = 1.084x [1.019x, 1.149x] $\le 1.50\times$; 15-robot latency ratio = 1.125x [1.032x, 1.218x] $\le 1.50\times$ | `modelled` | 10+ robots edge latency ratio $\le 1.50\times$ 3-robot baseline | `python results/final/N8/run_n8.py` | `29f37e75` | `results/final/N8/` |
-| **N9** (Cost per Task) | NFR-4 (Bedrock & infrastructure cost) | **PASS** | C1 call ratio = 24.43% [22.21%, 26.65%] $\le 50.0\%$; C1 cost/task = \$0.000544 [\$0.000527, \$0.000561]; C2 = \$0.001092; C3 = \$0.000414 | `modelled` | C1 model calls $\le 50\%$ of C2; cost per task reported for C1, C2, C3 | `python results/final/N9/run_n9.py` | `29f37e75` | `results/final/N9/` |
-| **N10** (Requester App & Console) | FR-21, FR-22 (Operator control & UI) | **PASS** | Cancel p95 latency = 0.293 s [0.259 s, 0.327 s] $\le 5.0$ s; Override p95 latency = 0.207 s [0.162 s, 0.251 s] $\le 5.0$ s; SC-1 verified | `measured_real_system` | SC-1 completes from app; cancel or override reaches robots $\le 5.0$ s | `python results/final/N10/run_n10.py` | `29f37e75` | `results/final/N10/` |
+**Scope:** experiments N1 to N10. Every number below is computed by the runner from its own records; where a verdict
+rests on a model's assumptions rather than a measurement, the row says so.
 
 ---
 
-## 2. Directory Structure and Deliverables
+## 1. Results
 
-Every experiment directory complies with the shared evaluation standards:
-- 10 seeded runs (seeds 1 to 10)
-- `summary.csv` containing explicit `source` attribution (`measured`, `real_bedrock`, `mock_llm`, `modelled`, or `simulated`)
-- Publication-quality vector (`.svg`) and 300 DPI raster (`.png`) plots adhering to team color palettes (C1 blue `#2b5c8f`, C2 orange `#d97736`, C3 grey `#7f8c8d`, pass bar red dashed line `#c0392b`)
-- Standardized 5-line `README.md` recording claim, pass bar, producing command, git commit, and quantitative PASS/FAIL verdict
-- Detailed host and AWS environment metadata in `env.json`
+| Run | PRD | Verdict | Measured | Source | PRD pass bar | Command | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **N1** (real network traces) | E4 input | **Not run** | No campus traces were collected; the three files in `traces/` are labelled "short synthetic example for local testing" | `not_run` | Continuous campus trace collection; RTT/loss histograms | n/a | `traces/` |
+| **N2** (Poisson outage model) | E4 | **PASS** (model) | C1 predicted success 100.00% vs C2 60.71% at λ = 20/h (10 seeds × 10,000 missions, Weibull durations by AIC); KS p = 0.85 on synthetic exponential inter-arrivals. C1's value follows from the assumed 60 s survival threshold. | `modelled` | KS-test p ≥ 0.05 on exponential inter-arrivals; C1 predicted success ≥ 90% | `python results/final/N2/run_n2.py` | `results/final/N2/` |
+| **N3** (network degradation, analytical model; planned as trace replay) | FR-6, NFR-2 | **PASS** (model) | C1 recovery over the 120 outage rows: median 2.37 s, mean 2.33 s, p95 3.40 s; C1 success 240/240; C2 63.3%, C3 63.7%. Both C1 numbers are fixed by the formulas. | `modelled` | Normal operation resumed within 60 to 120 s (NFR-2); success ≥ 90% | `python results/final/N3/run_n3.py` | `results/final/N3/` |
+| **N4** (duplicate and replayed messages at the cloud ingress) | FR-8 | **PASS** | 0 steps executed twice over 5,000 messages in 10 seeds; 1,500/1,500 repeated message ids dropped; 1,500/1,500 repeat cancels of a cancelled task refused with 409; 1,000/1,000 fresh requests accepted | `simulated` | Zero steps executed twice; every drop logged with reason | `python results/final/N4/run_n4.py` | `results/final/N4/` |
+| **N5** (selective sharing) | FR-11 | **PASS** | Recall 100% (TP 441, FN 0), precision 100% over 300 seeded random events (72 unique zone/type events, 15/15 zones, 10 lease layouts) | `simulated` | Recall 100% (every affected cluster told); high precision | `python results/final/N5/run_n5.py` | `results/final/N5/` |
+| **N6** (audit replay and determinism) | FR-20, NFR-6 | **PASS** | 10/10 seeds byte-identical across two processes with different `PYTHONHASHSEED`; 147 decision rows; `e6_seed_diff.txt` is 0 bytes | `simulated` | Every timeline replays; seeded reruns byte-identical | `python results/final/N6/run_n6.py` | `results/final/N6/` |
+| **N7** (security and privacy audit) | NFR-5 | **PASS** | 10/10 static checks: 0 unjustified IAM wildcards, 0 secret-pattern hits, 0 manifest or PII problems, no inline image field in any WAN schema | `static_audit` | No wildcard IAM on data; no secrets in code; 100% synthetic data; images only inside OUTPUT_READY | `python results/final/N7/run_n7.py` | `results/final/N7/` |
+| **N8** (scalability, cloud side) | NFR-3 | **PASS** | Cloud request-to-decision p95 (stand-in model, best of 3) vs 3 robots: 10 robots 1.10x, 15 robots 1.15x (means), worst seed 1.44x; 10/10 seeds within 1.5x | `mock_llm` | p95 decision latency at 10+ robots ≤ 1.5x the 3-robot baseline | `python results/final/N8/run_n8.py` | `results/final/N8/` |
+| **N9** (cost per task) | NFR-4 | **PASS** | From C9's real-Bedrock records: C1 1.18 vs C2 5.27 calls per task, 22.4% (95% CI 19.8% to 25.2%); modelled cost per task C1 \$0.000226, C2 \$0.000555, C3 \$0.000052 | `modelled` | C1 model calls ≤ 50% of C2; cost per task reported for all configurations | `python results/final/N9/run_n9.py` | `results/final/N9/` |
+| **N10** (requester app and operator console) | FR-21, FR-22 | **PASS (cloud side only)** | Local in-process server: control-API round trip p95 0.057 s (cancel), 0.055 s (pause), max 0.062 s; 40/40 acknowledged with a new stop-lease version; SC-1 completed with a simulated edge completion. Stop-lease delivery to an edge or robot not measured. | `measured` | SC-1 completes from app; cancel or override reaches robots within 5 s | `python results/final/N10/run_n10.py --no-video` | `results/final/N10/` |
+
+The folder READMEs carry the full notes; [RESULTS.md](RESULTS.md) has the same rows with plots and commits.
+
+---
+
+## 2. Directory structure
+
+Each folder has `run_n<n>.py`, `summary.csv` (with a `source` column), `plots/` (`.png` at 300 dpi and `.svg`),
+`env.json` (commit with `-dirty` flag, command, seeds, run times, target, model; the AWS fields are `null`) and a
+`README.md` in the [results guide](../../docs/RESULTS_GUIDE.md) format that `experiments/cloud/report.py` reads.
 
 ```
 results/final/
-├── SUMMARY.md                          # Top-level synthesis report (this file)
-├── N2/                                 # Poisson outage model & survival analysis
-│   ├── outage_model.json               # Fitted Poisson lambda, Weibull parameters, Gilbert-Elliott matrix
-│   ├── summary.csv                     # 10 seeded Monte Carlo runs (source=modelled)
-│   ├── env.json, README.md, run_n2.py
-│   └── plots/                          # interarrival_hist, qq_plot, duration_survival, success_vs_lambda
-├── N3/                                 # Edge-to-cloud trace replay under synthetic & benchmark network degradation
-│   ├── summary.csv                     # 720 runs across T2, T4, T5, T7 x C1, C2, C3 x 6 traces x seeds 1-10 (source=simulated)
-│   ├── raw/replay_harness_meta.json    # Network emulator configuration and latency bounds
-│   ├── env.json, README.md, run_n3.py
-│   └── plots/                          # success_vs_loss, recovery_time_box, completion_vs_rtt, wan_bytes_per_task
-├── N4/                                 # Duplicate, out-of-order, stale message injection
-│   ├── e6_injection.csv                # 500 injected messages per seed with drop reasons and idempotency flags
-│   ├── summary.csv                     # 10 seeded injection runs (source=simulated)
-│   ├── env.json, README.md, run_n4.py
-│   └── plots/                          # injection_outcomes, timeline_dedup
-├── N5/                                 # Selective sharing and spatial cluster boundary enforcement
-│   ├── e6_sharing.csv                  # 300 event evaluations across geographic hospital clusters
-│   ├── summary.csv                     # Confusion matrix, recall, precision per seed (source=simulated)
-│   ├── env.json, README.md, run_n5.py
-│   └── plots/                          # confusion_matrix, precision_recall
-├── N6/                                 # Audit replay & bitwise determinism
-│   ├── e6_replay.json                  # Full decision-log reconstructed execution timelines
-│   ├── e6_seed_diff.txt                # 0-byte diff confirming bitwise identical seed replay
-│   ├── summary.csv                     # Hash verifications and diff metrics (source=simulated)
-│   ├── env.json, README.md, run_n6.py
-│   └── plots/                          # timeline_swimlane
-├── N7/                                 # Security and data privacy audit
-│   ├── audit_iam.txt                   # Automated IAM least-privilege policy review
-│   ├── secret_scan_report.txt          # Git history secret scan report
-│   ├── manifest.json                   # Verified synthetic training/eval data manifests
-│   ├── summary.csv                     # 10 audit category checklist (source=measured_real_system)
-│   ├── env.json, README.md, run_n7.py
-│   └── plots/                          # security_checklist
-├── N8/                                 # Fleet scalability (3 to 15 robots under MIMIC-IV arrival stream)
-│   ├── e7.csv                          # Decision latency, queue wait time, deadline misses at scale
-│   ├── arrival_file.csv                # Time-varying Poisson hospital arrival profile
-│   ├── summary.csv                     # 10-robot and 15-robot latency ratios (source=modelled)
-│   ├── env.json, README.md, run_n8.py
-│   └── plots/                          # p95_latency_scale, waiting_miss_ratio, arrival_rate
-├── N9/                                 # Cost per task breakdown (Amazon Bedrock Nova-Lite & AWS Fargate)
-│   ├── cost.csv                        # Per-task itemized cost across C1, C2, C3
-│   ├── cost_formula_sheet.json         # Exact formula parameters matching PRD Section 7
-│   ├── summary.csv                     # Model call ratios and dollar cost per task (source=modelled)
-│   ├── env.json, README.md, run_n9.py
-│   └── plots/                          # cost_per_task_stacked, success_vs_cost
-└── N10/                                # Requester app and operator console live validation
-    ├── cancel.csv                      # 40 live measurements of cancel and urgent override stop latency
-    ├── demo_completed_flow.webm        # 1080p video of SC-1 end-to-end task execution in live console
-    ├── demo_cancel_flow.webm           # 1080p video of live operator task cancellation
-    ├── summary.csv                     # 10 seed rows of cancel/override latency (source=measured_real_system)
-    ├── env.json, README.md, run_n10.py
-    └── plots/                          # cancel_latency_cdf
+├── SUMMARY.md                 # this file
+├── N2/  outage_model.json     # synthetic sample, trace observations, fits, Monte Carlo results, verdict
+├── N3/  raw/model_meta.json   # the formulas and hand-set profiles behind summary.csv (720 modelled rows)
+├── N4/  e6_injection.csv      # one row per message: HTTP status, outcome, reason; state_check.json from GET /tasks
+├── N5/  e6_sharing.csv        # one row per (event, cluster): expected vs informed
+├── N6/  e6_replay.json        # per-seed decision counts and sha256; e6_seed_diff.txt (empty)
+├── N7/  findings.json         # what each check found; audit_iam.txt, secret_scan_report.txt, manifest.json
+├── N8/  e7.csv                # per (seed, fleet size): best-of-3 p50/p95, every run's p95, waits, misses; arrival_file.csv
+├── N9/  cost.csv              # one row per C9 task: calls, tokens, priced terms; cost_formula_sheet.json
+└── N10/ cancel.csv, sc1.json  # 40 timed control calls; SC-1 steps; the .webm videos predate this run (see its README)
 ```
 
 ---
 
-## 3. Key Findings
+## 3. Key findings and limits
 
-1. **Synthetic vs Field Traces (N1, N2, N3):** Genuine physical campus Wi-Fi traces from IISc were not obtainable in the project testbed; hence, **N1 is formally designated `NOT_RUN`**. Outage analysis (N2, N3) was conducted using synthetic Poisson walk traces (`traces/`). Outages were fitted to a Poisson arrival process with an empirical mean inter-arrival time of 152.3 s ($\lambda = 23.64/\text{hr}$, KS $p = 0.8527$). Durations are best characterized by a Weibull distribution ($\text{AIC} = 325.4$ vs Exponential $374.2$). Under these modelled conditions, C1's hybrid architectural lease model delivers 100.0% completion and recovers within 1.31 s on average (p95 = 3.40 s $\le 60$ s), while pure cloud relay (C2) degrades to 61.8% task success under severe disconnectivity.
-2. **Strict Message Deduplication & Determinism (N4, N6):** Across 500 injected duplicates, out-of-order deliveries, and replayed task leases, zero duplicate steps were executed (100% idempotency). Replaying decision logs from seeds produced bitwise-identical executions (`e6_seed_diff.txt` is 0 bytes), confirming full audit replayability (FR-20, NFR-6).
-3. **Cluster Spatial Privacy (N5, N7):** Selective sharing achieved 100.0% recall with 0 false negatives, ensuring that route impediments and quarantine events are published strictly to affected clusters without leaking location telemetry across hospital wings. Security audits confirmed zero hardcoded credentials, zero unjustified IAM wildcards, and strict confinement of camera frames to `OUTPUT_READY` payloads.
-4. **Linear Scaling & Cost Advantage (N8, N9):** Under time-varying MIMIC-IV shift arrival bursts, scaling from 3 to 10 robots resulted in only an 8.4% increase in decision latency ($1.084\times \le 1.50\times$ pass bar), and 15 robots increased latency by 12.5% ($1.125\times \le 1.50\times$). In terms of economics, C1 requires only 1.69 Bedrock model calls per task compared to 6.93 calls in C2 (24.4% of C2 $\le 50.0\%$ pass bar), yielding an average operational cost of only \$0.000544 per completed clinical delivery task.
-5. **Real-Time Operator Responsiveness (N10):** Measured across 40 live operations on the deployed AWS environment (`ap-south-1`), task cancellation and urgent preemption stop leases reached robots in an average of 0.293 s (p95 = 0.328 s, max = 0.425 s), easily surpassing the PRD's 5.0 s pass bar (FR-22). (Scope note: this latency reflects API cancellation and stop lease publication `Request created` -> `Stop lease published` -> `Console ACK`; full robot physical deceleration is verified via video/simulation playback). The recorded single-page demo stream captures SC-1 completing end-to-end through prompt clarification, route leasing, and confirmed delivery.
+1. **No field traces (N1, N2, N3).** N1 was not run. The `traces/` files are synthetic and hold one outage, so N2 fits
+   its outage model to a seeded synthetic sample, and its KS test checks the fitting code, not a network. N3 is a set of
+   closed-form formulas over six hand-set profiles; nothing is replayed. In both, C1's success follows from an assumed
+   60 s survival threshold. Measured recovery and safe parking are in R7 and R9.
+2. **Ingress de-duplication (N4) is measured on the real server code.** Repeated message ids, including replays with
+   an altered text, were acknowledged and never executed again, and `GET /tasks` shows no task from an altered replay.
+   N4 does not inject stale lease versions or re-ordered edge messages (R6 covers stale versions at the edge). The
+   server answers each drop with a reason but writes no persistent drop log; the harness records each answer.
+3. **Determinism (N6)** holds for the seeded orchestrator scenario with the offline model on a fixed clock.
+4. **Selective sharing (N5)** matches the FR-11 rule on 300 random events, including leases that cross wings. It checks
+   the code against the rule, not whether the rule informs the right people.
+5. **Security (N7)** is a static scan of this checkout: declared IAM, tracked source, the data manifest and the WAN
+   schemas. It does not cover git history, the deployed account or runtime traffic. The escalation payload schemas do
+   not forbid extra keys, so the schemas alone do not exclude an inline image in, say, an UNEXPECTED_EVENT payload.
+6. **Scaling (N8)** measures the cloud's own decision time with the stand-in model under synthetic arrivals (not
+   MIMIC-IV), not edge decision latency. The worst seed is 1.44x against a 1.5x bar and single runs are noisy: without
+   the warm-up runs the first seed failed at about 1.7x to 2.0x because its baseline was timed while the process still
+   ran fast.
+7. **Cost (N9)** uses C9's measured calls and tokens, so the NFR-4 ratio (22.4%) is measured. The dollars are modelled:
+   Bedrock list prices plus a Fargate share of about 7.5 s of a 0.5 vCPU / 1 GB task per task, taken from C9's run rate.
+   Other AWS terms are left out. No billing data or AWS API call is involved.
+8. **Operator control (N10)** measures the cloud's acknowledgement of cancel and pause on a local server. Whether the
+   stop lease reaches an edge and a robot within 5 s is not measured, and SC-1's completion is posted by the script.
+   Earlier claims of 40 live operations on the deployed AWS cloud have no committed data and are withdrawn.

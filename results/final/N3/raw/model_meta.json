@@ -1,0 +1,71 @@
+{
+  "experiment": "N3 analytical network-degradation model (not trace replay)",
+  "rows": 720,
+  "configurations": [
+    "C1",
+    "C2",
+    "C3"
+  ],
+  "tasks": [
+    "T2",
+    "T4",
+    "T5",
+    "T7"
+  ],
+  "profiles": [
+    {
+      "name": "Healthy",
+      "rtt": 15.0,
+      "loss": 0.0,
+      "outage_s": 0.0
+    },
+    {
+      "name": "Corridor",
+      "rtt": 21.0,
+      "loss": 0.5,
+      "outage_s": 0.0
+    },
+    {
+      "name": "Lift",
+      "rtt": 240.0,
+      "loss": 8.5,
+      "outage_s": 0.0
+    },
+    {
+      "name": "Basement",
+      "rtt": 450.0,
+      "loss": 45.0,
+      "outage_s": 19.0
+    },
+    {
+      "name": "N2-Synth-Mild",
+      "rtt": 80.0,
+      "loss": 5.0,
+      "outage_s": 5.0
+    },
+    {
+      "name": "N2-Synth-Severe",
+      "rtt": 520.0,
+      "loss": 65.0,
+      "outage_s": 35.0
+    }
+  ],
+  "profiles_note": "hand-set constants; the files in traces/ are not read",
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "rng": "numpy default_rng(seed * 100 + 42)",
+  "c1_model": "recovery ~ U(1.2, 3.5) s if outage else U(0.1, 0.5) s; success = completion <= deadline and outage < 60 s",
+  "c2_model": "recovery = outage + U(12, 24) s; success ~ Bernoulli(max(0, 1 - loss/80 - outage/50)) and deadline",
+  "c3_model": "recovery = outage + U(8, 18) s; success ~ Bernoulli(max(0, 0.95 - loss/90 - outage/60)) and deadline",
+  "wan_bytes": "hand-set per task and configuration, x U(0.95, 1.05..1.08)"
+}

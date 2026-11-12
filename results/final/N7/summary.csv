@@ -1,11 +1,11 @@
 check_id,category,pass_criteria,audit_result,source
-SEC-01,IAM,Zero wildcard '*' actions on data APIs,PASS,measured_real_system
-SEC-02,IAM,Documented justifications for resource exceptions,PASS,measured_real_system
-SEC-03,IAM,Least-privilege Fargate task role policy,PASS,measured_real_system
-SEC-04,Secrets,Zero AWS access keys in repository,PASS,measured_real_system
-SEC-05,Secrets,Zero private keys or sensitive credentials in git,PASS,measured_real_system
-SEC-06,Privacy,100% synthetic dataset manifest declaration,PASS,measured_real_system
-SEC-07,Privacy,"Zero PII (email, phone, SSN, DOB, MRN) in traces",PASS,measured_real_system
-SEC-08,Privacy,Traces declared free of personal patient data,PASS,measured_real_system
-SEC-09,WAN Data,Camera images transit WAN exclusively in OUTPUT_READY,PASS,measured_real_system
-SEC-10,WAN Data,Check-ins and unexpected events restricted to telemetry metadata,PASS,measured_real_system
+SEC-01,IAM,Zero wildcard '*' actions on data APIs,PASS,static_audit
+SEC-02,IAM,Documented justifications for resource exceptions,PASS,static_audit
+SEC-03,IAM,Least-privilege Fargate task role policy,PASS,static_audit
+SEC-04,Secrets,Zero AWS access keys in repository,PASS,static_audit
+SEC-05,Secrets,"Zero secret patterns (keys, tokens, passwords) in tracked source",PASS,static_audit
+SEC-06,Privacy,100% synthetic dataset manifest declaration,PASS,static_audit
+SEC-07,Privacy,"Zero PII patterns (e-mail, phone, national id, MRN, date of birth) in manifest-listed datasets (scripts/audit_data.py)",PASS,static_audit
+SEC-08,Privacy,Traces declared free of personal patient data,PASS,static_audit
+SEC-09,WAN Data,OUTPUT_READY payload carries only a string result_ref (no inline image field),PASS,static_audit
+SEC-10,WAN Data,No contracts/*.schema.json declares an inline image/binary/base64 field,PASS,static_audit

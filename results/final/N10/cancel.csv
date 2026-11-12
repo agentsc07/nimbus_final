@@ -1,41 +1,41 @@
-seed,operation_idx,operation,task_id,latency_seconds,terminal_status,pass_5s
-1,1,cancel,task-000001,0.0346,cancelled,True
-1,2,cancel,task-000002,0.0164,cancelled,True
-1,1,urgent_override,task-000003,0.015,paused,True
-1,2,urgent_override,task-000004,0.0356,paused,True
-2,3,cancel,task-000005,0.022,cancelled,True
-2,4,cancel,task-000006,0.022,cancelled,True
-2,3,urgent_override,task-000007,0.0247,paused,True
-2,4,urgent_override,task-000008,0.0132,paused,True
-3,5,cancel,task-000009,0.0363,cancelled,True
-3,6,cancel,task-000010,0.0147,cancelled,True
-3,5,urgent_override,task-000011,0.0164,paused,True
-3,6,urgent_override,task-000012,0.0107,paused,True
-4,7,cancel,task-000013,0.0187,cancelled,True
-4,8,cancel,task-000014,0.0225,cancelled,True
-4,7,urgent_override,task-000015,0.0152,paused,True
-4,8,urgent_override,task-000016,0.013,paused,True
-5,9,cancel,task-000017,0.0197,cancelled,True
-5,10,cancel,task-000018,0.0134,cancelled,True
-5,9,urgent_override,task-000019,0.0135,paused,True
-5,10,urgent_override,task-000020,0.009,paused,True
-6,11,cancel,task-000021,0.0269,cancelled,True
-6,12,cancel,task-000022,0.0314,cancelled,True
-6,11,urgent_override,task-000023,0.0129,paused,True
-6,12,urgent_override,task-000024,0.0086,paused,True
-7,13,cancel,task-000025,0.0224,cancelled,True
-7,14,cancel,task-000026,0.0138,cancelled,True
-7,13,urgent_override,task-000027,0.0151,paused,True
-7,14,urgent_override,task-000028,0.0194,paused,True
-8,15,cancel,task-000029,0.0134,cancelled,True
-8,16,cancel,task-000030,0.0146,cancelled,True
-8,15,urgent_override,task-000031,0.0227,paused,True
-8,16,urgent_override,task-000032,0.0159,paused,True
-9,17,cancel,task-000033,0.0109,cancelled,True
-9,18,cancel,task-000034,0.0097,cancelled,True
-9,17,urgent_override,task-000035,0.0371,paused,True
-9,18,urgent_override,task-000036,0.0421,paused,True
-10,19,cancel,task-000037,0.043,cancelled,True
-10,20,cancel,task-000038,0.0235,cancelled,True
-10,19,urgent_override,task-000039,0.0286,paused,True
-10,20,urgent_override,task-000040,0.0137,paused,True
+seed,operation_idx,operation,action,task_id,status_before,lease_version_before,control_http_status,control_rtt_seconds,status_after,lease_version_after,stop_lease_issued_by_cloud,accepted,pass_5s,cleanup_cancel_http_status,robot_receipt,source
+1,1,cancel,cancel,task-000001,leased,1,201,0.0189,cancelled,2,True,True,True,,not measured,measured
+1,2,cancel,cancel,task-000002,leased,1,201,0.0221,cancelled,2,True,True,True,,not measured,measured
+1,1,urgent_override,pause,task-000003,leased,1,201,0.0218,paused,2,True,True,True,201.0,not measured,measured
+1,2,urgent_override,pause,task-000004,leased,1,201,0.0345,paused,2,True,True,True,201.0,not measured,measured
+2,3,cancel,cancel,task-000005,leased,1,201,0.0174,cancelled,2,True,True,True,,not measured,measured
+2,4,cancel,cancel,task-000006,leased,1,201,0.0347,cancelled,2,True,True,True,,not measured,measured
+2,3,urgent_override,pause,task-000007,leased,1,201,0.0285,paused,2,True,True,True,201.0,not measured,measured
+2,4,urgent_override,pause,task-000008,leased,1,201,0.0542,paused,2,True,True,True,201.0,not measured,measured
+3,5,cancel,cancel,task-000009,leased,1,201,0.052,cancelled,2,True,True,True,,not measured,measured
+3,6,cancel,cancel,task-000010,leased,1,201,0.025,cancelled,2,True,True,True,,not measured,measured
+3,5,urgent_override,pause,task-000011,leased,1,201,0.0445,paused,2,True,True,True,201.0,not measured,measured
+3,6,urgent_override,pause,task-000012,leased,1,201,0.0393,paused,2,True,True,True,201.0,not measured,measured
+4,7,cancel,cancel,task-000013,leased,1,201,0.0311,cancelled,2,True,True,True,,not measured,measured
+4,8,cancel,cancel,task-000014,leased,1,201,0.0317,cancelled,2,True,True,True,,not measured,measured
+4,7,urgent_override,pause,task-000015,leased,1,201,0.0208,paused,2,True,True,True,201.0,not measured,measured
+4,8,urgent_override,pause,task-000016,leased,1,201,0.0386,paused,2,True,True,True,201.0,not measured,measured
+5,9,cancel,cancel,task-000017,leased,1,201,0.0244,cancelled,2,True,True,True,,not measured,measured
+5,10,cancel,cancel,task-000018,leased,1,201,0.0565,cancelled,2,True,True,True,,not measured,measured
+5,9,urgent_override,pause,task-000019,leased,1,201,0.0303,paused,2,True,True,True,201.0,not measured,measured
+5,10,urgent_override,pause,task-000020,leased,1,201,0.028,paused,2,True,True,True,201.0,not measured,measured
+6,11,cancel,cancel,task-000021,leased,1,201,0.0384,cancelled,2,True,True,True,,not measured,measured
+6,12,cancel,cancel,task-000022,leased,1,201,0.0508,cancelled,2,True,True,True,,not measured,measured
+6,11,urgent_override,pause,task-000023,leased,1,201,0.0334,paused,2,True,True,True,201.0,not measured,measured
+6,12,urgent_override,pause,task-000024,leased,1,201,0.0212,paused,2,True,True,True,201.0,not measured,measured
+7,13,cancel,cancel,task-000025,leased,1,201,0.0426,cancelled,2,True,True,True,,not measured,measured
+7,14,cancel,cancel,task-000026,leased,1,201,0.0341,cancelled,2,True,True,True,,not measured,measured
+7,13,urgent_override,pause,task-000027,leased,1,201,0.028,paused,2,True,True,True,201.0,not measured,measured
+7,14,urgent_override,pause,task-000028,leased,1,201,0.0449,paused,2,True,True,True,201.0,not measured,measured
+8,15,cancel,cancel,task-000029,leased,1,201,0.0464,cancelled,2,True,True,True,,not measured,measured
+8,16,cancel,cancel,task-000030,leased,1,201,0.0373,cancelled,2,True,True,True,,not measured,measured
+8,15,urgent_override,pause,task-000031,leased,1,201,0.046,paused,2,True,True,True,201.0,not measured,measured
+8,16,urgent_override,pause,task-000032,leased,1,201,0.062,paused,2,True,True,True,201.0,not measured,measured
+9,17,cancel,cancel,task-000033,leased,1,201,0.0444,cancelled,2,True,True,True,,not measured,measured
+9,18,cancel,cancel,task-000034,leased,1,201,0.0488,cancelled,2,True,True,True,,not measured,measured
+9,17,urgent_override,pause,task-000035,leased,1,201,0.0329,paused,2,True,True,True,201.0,not measured,measured
+9,18,urgent_override,pause,task-000036,leased,1,201,0.0343,paused,2,True,True,True,201.0,not measured,measured
+10,19,cancel,cancel,task-000037,leased,1,201,0.0509,cancelled,2,True,True,True,,not measured,measured
+10,20,cancel,cancel,task-000038,leased,1,201,0.0567,cancelled,2,True,True,True,,not measured,measured
+10,19,urgent_override,pause,task-000039,leased,1,201,0.0414,paused,2,True,True,True,201.0,not measured,measured
+10,20,urgent_override,pause,task-000040,leased,1,201,0.0494,paused,2,True,True,True,201.0,not measured,measured

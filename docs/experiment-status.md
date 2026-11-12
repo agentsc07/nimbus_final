@@ -10,16 +10,16 @@
 
 | ID | Experiment Name | Requirement Tested | Evaluated Data Source | Status / Category | Reproducible Runner Command | Evidence Path |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **N1** | IISc Campus Field Traces | E4, FR-6 | *None* (synthetic sample only) | **Not run** (Blocked on physical campus access) | *N/A* | `traces/` |
-| **N2** | Poisson Outage Modeling | Outage distribution & survival | Synthetic walk traces (`traces/`) | **Fixed** (`modelled`) | `python results/final/N2/run_n2.py` | `results/final/N2/` |
-| **N3** | Network Trace Replay | E4, FR-6, NFR-2 | Network degradation emulator | **Fixed** (`simulated`) | `python results/final/N3/run_n3.py` | `results/final/N3/` |
-| **N4** | Message Robustness | E6, FR-8 | Injected duplicate/stale messages | **Fixed** (`simulated`) | `python results/final/N4/run_n4.py` | `results/final/N4/` |
-| **N5** | Selective Sharing | FR-11 | Geographic cluster boundary matrix | **Fixed** (`simulated`) | `python results/final/N5/run_n5.py` | `results/final/N5/` |
-| **N6** | Audit Replay Determinism | FR-20, NFR-6 | Reconstructed decision logs | **Fixed** (`simulated`) | `python results/final/N6/run_n6.py` | `results/final/N6/` |
-| **N7** | Security & Privacy Audit | NFR-5 | Live Terraform, Git & datasets | **Fixed** (`measured_real_system`)| `python results/final/N7/run_n7.py` | `results/final/N7/` |
-| **N8** | Fleet Scalability | E7, NFR-3 | MIMIC-IV shift arrival queue model| **Fixed** (`modelled`) | `python results/final/N8/run_n8.py` | `results/final/N8/` |
-| **N9** | Cost Accounting Breakdown | NFR-4 | Bedrock Nova-Lite pricing model | **Fixed** (`modelled`) | `python results/final/N9/run_n9.py` | `results/final/N9/` |
-| **N10**| Operator Console Validation | FR-21, FR-22 | Live AWS deployment (`ap-south-1`) | **Fixed** (`measured_real_system`)| `python results/final/N10/run_n10.py` | `results/final/N10/` |
+| **N1** | IISc Campus Field Traces | E4, FR-6 | *None*: `traces/iisc_*.csv` are labelled synthetic | **Not run** (no campus traces collected) | *N/A* | `traces/` |
+| **N2** | Poisson Outage Model | E4 | Seeded synthetic sample (the traces hold one outage, too few to fit) | **Fixed** (`modelled`) | `python results/final/N2/run_n2.py` | `results/final/N2/` |
+| **N3** | Network Degradation (analytical model; planned as trace replay) | FR-6, NFR-2 | Closed-form formulas over six hand-set profiles; no trace replayed, no system run | **Fixed** (`modelled`) | `python results/final/N3/run_n3.py` | `results/final/N3/` |
+| **N4** | Duplicate and Replayed Messages | FR-8 | Synthetic messages to a live in-process `server.py` (127.0.0.1) | **Fixed** (`simulated`) | `python results/final/N4/run_n4.py` | `results/final/N4/` |
+| **N5** | Selective Sharing | FR-11 | Seeded random events and leases against `MapState.affected_clusters` | **Fixed** (`simulated`) | `python results/final/N5/run_n5.py` | `results/final/N5/` |
+| **N6** | Audit Replay Determinism | FR-20, NFR-6 | Seeded orchestrator scenario, two processes per seed | **Fixed** (`simulated`) | `python results/final/N6/run_n6.py` | `results/final/N6/` |
+| **N7** | Security & Privacy Audit | NFR-5 | Static scan of the repository (IAM files, tracked source, manifest, WAN schemas) | **Fixed** (`static_audit`) | `python results/final/N7/run_n7.py` | `results/final/N7/` |
+| **N8** | Fleet Scalability (cloud side) | NFR-3 | In-process orchestrator, stand-in model, synthetic arrivals (not MIMIC-IV) | **Fixed** (`mock_llm`) | `python results/final/N8/run_n8.py` | `results/final/N8/` |
+| **N9** | Cost per Task | NFR-4 | C9's real-Bedrock call/token counts priced at list rates | **Fixed** (`modelled`) | `python results/final/N9/run_n9.py` | `results/final/N9/` |
+| **N10**| Operator Console Validation (cloud side) | FR-21, FR-22 | Local in-process `server.py` (127.0.0.1); no deployed cloud, no edge | **Fixed** (`measured`, cloud acknowledgement only) | `python results/final/N10/run_n10.py --no-video` | `results/final/N10/` |
 
 ---
 
@@ -60,57 +60,83 @@
 
 ## 3. Detailed Experiment Audit Findings (N1–N10)
 
+All N2 to N10 results were regenerated on the red-team fix branch (`5ea3e6a-dirty`). No N run called AWS or Bedrock.
+Each `env.json` records the real commit, command, seeds and run times; its AWS fields are `null`.
+
 ### N1 — IISc Campus Field Traces
 - **Status:** `Not run`.
-- **Finding:** No genuine continuous 48-hour physical Wi-Fi trace collection on the IISc campus was possible within the test environment.
-- **Remediation:** Any claims of physical Raspberry Pi field measurements were formally withdrawn. Traces in `traces/` (`synthetic_walk.csv`, `corridor_drop.csv`) are strictly labeled as synthetic benchmarks.
+- **Finding:** No continuous physical Wi-Fi trace collection on the IISc campus was done.
+- **Remediation:** Claims of physical Raspberry Pi field measurements are withdrawn. The files in `traces/`
+  (`iisc_basement.csv`, `iisc_corridor.csv`, `iisc_lift.csv`) are labelled "short synthetic example for local testing".
 
-### N2 — Poisson Outage Modeling
+### N2 — Poisson Outage Model
 - **Status:** `Fixed` (`modelled`).
-- **Finding:** Fitted outage inter-arrivals from synthetic traces using MLE. Kolmogorov-Smirnov test confirmed Poisson goodness-of-fit ($p = 0.8527 \ge 0.05$). Outage duration survival curves selected Weibull distribution via Akaike Information Criterion ($\text{AIC} = 325.4$ vs Exponential $374.2$).
-- **Provenance:** Correctly labeled as mathematical Monte Carlo simulation (`modelled`).
+- **Finding:** The traces hold one outage, too few to fit, so the model is fitted to a seeded synthetic sample. The KS
+  test (p = 0.85) runs on exponential draws and only checks the fitting code. The Monte Carlo now samples durations from
+  the AIC-best fit (Weibull) with scipy's own parameters: C1 predicted success 100.00% vs C2 60.71% at λ = 20/h.
+  C1's value follows from the assumed 60 s survival threshold. The verdict is computed; the hard-coded headline
+  (98.4% vs 61.8%) and the hard-coded "N3 measured" overlay points are removed.
 
-### N3 — Network Trace Replay
-- **Status:** `Fixed` (`simulated`).
-- **Finding:** Evaluated 720 runs across configurations C1, C2, C3 over 6 network degradation profiles (loss rates up to 25%, RTTs up to 500ms). C1 achieved 100.0% completion and recovered in 1.31 s (p95 = 3.40 s $\le 60$ s).
-- **Provenance:** Execution executed via synthetic trace replayer and simulated network proxy (`simulated`).
+### N3 — Network Degradation (analytical model; planned as trace replay)
+- **Status:** `Fixed` (`modelled`).
+- **Finding:** No trace is replayed and no Nimbus code runs: 720 rows come from closed-form formulas with seeded noise
+  over six hand-set profiles. C1 recovery over the 120 outage rows has median 2.37 s, mean 2.33 s, p95 3.40 s, and C1
+  success is 240/240; both are fixed by the formulas (recovery drawn from U(1.2, 3.5) s, success whenever the outage is
+  under 60 s). The earlier 1.31 s mean averaged in rows with no outage. Measured recovery is in R7 and R9.
 
-### N4 — Message Robustness & Deduplication
+### N4 — Duplicate and Replayed Messages
 - **Status:** `Fixed` (`simulated`).
-- **Finding:** Injected 500 duplicate, out-of-order, and stale lease messages across 10 seeded runs against a live local HTTP server testbed (`server.make_server`). Verified that in-flight reservation and persistent deduplication prevented all duplicate task state transitions (zero duplicate steps executed, 100% pass bar).
+- **Finding:** 5,000 synthetic messages over 10 seeds to a live in-process `server.py`: 0 steps executed twice,
+  1,500/1,500 repeated message ids dropped (including 500 replays with an altered text), 1,500/1,500 repeat cancels of a
+  cancelled task refused with 409, 1,000/1,000 fresh requests accepted; `GET /tasks` shows no task from an altered replay.
+  The categories formerly called "stale lease version" and "shuffled order" were a repeat cancel and fresh requests;
+  they are renamed. No real stale-version or re-ordering injection is run here, and the server writes no persistent
+  drop log (each drop's reason is in its HTTP answer, recorded by the harness).
 
 ### N5 — Selective Sharing
 - **Status:** `Fixed` (`simulated`).
-- **Finding:** Evaluated 300 corridor blockage and quarantine events across `east-wing` and `west-wing`. Expected affected clusters were computed independently from raw `pack.topology_doc` spatial node boundaries and active lease reservations (completely independent of `MapState.affected_clusters`). Measured 100.0% recall (0 false negatives) and 100.0% precision, ensuring zero cross-wing telemetry leakage.
+- **Finding:** The per-seed RNG now draws 30 events (zone and type) and the live leases per seed: 300 events, 72 unique
+  zone/type events, all 15 zones, 39 events in a zone that a lease from the other wing routes through. Recall 100%
+  (441 TP, 0 FN), precision 100%. The expected set encodes the FR-11 rule from the pack's topology, so this checks the
+  code against the rule, not the rule itself.
 
 ### N6 — Audit Replay & Determinism
 - **Status:** `Fixed` (`simulated`).
-- **Finding:** Replayed 10 seeded execution logs using independent Python subprocesses with distinct `PYTHONHASHSEED` environment variables. Generated bitwise identical timeline reconstructions (`e6_seed_diff.txt` is 0 bytes), verifying deterministic reproducibility.
+- **Finding:** 10/10 seeded scenarios gave byte-identical decision logs in two processes with different
+  `PYTHONHASHSEED` (147 rows, empty diff). The swimlane plot is now drawn from seed 7's real rows; the literal "100%
+  timeline reconstruction" is removed.
 
 ### N7 — Security and Privacy Audit
-- **Status:** `Fixed` (`measured_real_system`).
-- **Finding:** Executed 10 automated, dynamic audit checks against actual repo source files, contracts, and Terraform configurations (zero hard-coded True checks):
-  - 0 plaintext credentials found across full Git history and tracked files (`audit_iam.secret_findings`).
-  - Scoped IAM policies confirmed for DynamoDB, SQS, S3, Secrets Manager, and Bedrock.
-  - 100% of evaluation datasets confirmed synthetic (no PHI/PII in manifest or traces).
-  - Camera payloads dynamically confirmed restricted to `OUTPUT_READY` payloads.
+- **Status:** `Fixed` (`static_audit`).
+- **Finding:** 10/10 static checks pass, with the count and verdict computed from the checks. It scans this checkout
+  only (declared IAM, tracked source, data manifest, WAN schemas), not git history, the deployed account or traffic.
+  SEC-07 now uses `scripts/audit_data.py`'s PII patterns over every manifest-listed dataset. SEC-10 no longer
+  string-matches `contracts/topics.md`; it checks that no `contracts/*.schema.json` declares an inline image or binary
+  field. The payload schemas do not forbid extra keys, which the schema check cannot rule out.
 
-### N8 — Fleet Scalability
+### N8 — Fleet Scalability (cloud side)
+- **Status:** `Fixed` (`mock_llm`).
+- **Finding:** The metric is the cloud's own request-to-decision time with the stand-in model (not edge decision
+  latency), under synthetic arrivals (not MIMIC-IV). Best of 3 interleaved runs per point after 5 warm-up runs:
+  10 robots 1.10x and 15 robots 1.15x the 3-robot p95 on average, worst seed 1.44x, 10/10 seeds within 1.5x. Without
+  the warm-up, seed 1 failed (its baseline was timed while the process still ran about twice as fast).
+
+### N9 — Cost per Task
 - **Status:** `Fixed` (`modelled`).
-- **Finding:** Modelled 3 to 15 robots under time-varying MIMIC-IV emergency department arrival patterns. 10-robot latency ratio was $1.084\times \le 1.50\times$, and 15-robot latency ratio was $1.125\times \le 1.50\times$.
+- **Finding:** Calls and tokens now come from C9's real-Bedrock records (no random draws): C1 1.18 vs C2 5.27 calls
+  per task, 22.4% (95% CI 19.8% to 25.2%), so NFR-4 passes on measured counts. The dollars are modelled from Bedrock list
+  prices and a Fargate share (0.5 vCPU, 1 GB per `main.tf`, hourly rates divided by 3600, about 7.5 s per task from C9's
+  run rate): C1 \$0.000226, C2 \$0.000555, C3 \$0.000052 per task. The live CloudWatch / Cost Explorer calls, the stored
+  billing records, the hard-coded account id and the hard-coded success points are removed.
 
-### N9 — Cost Accounting Breakdown
-- **Status:** `Fixed` (`modelled`).
-- **Finding:** Calculated per-task cost under PRD pricing formula using Bedrock Nova-Lite rates (\$0.06 / 1M input tokens, \$0.24 / 1M output tokens) and Fargate rates ($0.04048/vCPU-hr, $0.004445/GB-hr). Clarified that this reflects mathematical unit cost modeling, not live AWS Cost Explorer billing. C1 model call ratio was 24.4% of C2 ($\le 50.0\%$). C1 average cost per task was \$0.000544.
-
-### N10 — Live Operator Console & Requester Validation
-- **Status:** `Fixed` (`measured_real_system`).
-- **Finding:** Validated against live AWS deployment (`qrgdidp9te.execute-api.ap-south-1.amazonaws.com`).
-  - Recorded 1080p high-resolution screen captures:
-    - `results/final/N10/demo_completed_flow.webm` (SC-1 end-to-end delivery)
-    - `results/final/N10/demo_cancel_flow.webm` (real-time operator cancellation)
-  - Operator cancel stop latency measured across 40 live operations: mean 0.293 s (p95 = 0.328 s $\le 5.0$ s).
-  - Note on scope: Latency measures cloud API cancellation and stop lease publication (`Request created` -> `Stop lease published` -> `Console ACK`); physical robot deceleration to complete halt is verified via video/simulation playback, not on-robot IMU logging.
+### N10 — Operator Console Validation (cloud side)
+- **Status:** `Fixed` (`measured`, cloud acknowledgement only).
+- **Finding:** Run against a local in-process `server.py` on 127.0.0.1, not the deployed AWS cloud; with
+  `NIMBUS_CLOUD_URL` set the runner exits non-zero if `GET /health` fails instead of falling back. Control-API round trip
+  (`POST /tasks/{id}/control`): cancel p95 0.057 s, pause p95 0.055 s, max 0.062 s; 40/40 acknowledged with a new
+  stop-lease version. SC-1 completed through the requester API with a simulated edge completion (the script posts
+  `OUTPUT_READY`). Delivery of the stop lease to an edge or robot is not measured. The earlier "40 live operations on
+  `ap-south-1`, p95 0.328 s" claim has no committed data and is withdrawn. The `.webm` videos predate this change.
 
 ---
 

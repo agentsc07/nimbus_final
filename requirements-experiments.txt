@@ -5,5 +5,7 @@ numpy>=1.26
 scipy>=1.11
 pandas>=2.0
 psutil>=5.9
-# Only for recording the N10 console videos (scripts/record_n10_videos.py), then: python -m playwright install chromium
+# Only for recording the N10 console videos (scripts/record_n10_videos.py, and the optional video step of
+# results/final/N10/run_n10.py, which skips with a notice when playwright or Chromium is missing; --no-video skips it),
+# then: python -m playwright install chromium
 # playwright>=1.44

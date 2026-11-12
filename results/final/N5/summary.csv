@@ -1,11 +1,11 @@
-seed,events_run,clusters_evaluated,tp,fp,fn,tn,recall_pct,precision_pct,operator_notified_pct,source
-1,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-2,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-3,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-4,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-5,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-6,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-7,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-8,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-9,30,2,40,0,0,20,100.0,100.0,100.0,simulated
-10,30,2,40,0,0,20,100.0,100.0,100.0,simulated
+seed,events_run,unique_zones,unique_events_zone_type,leases,clusters_evaluated,tp,fp,fn,tn,recall_pct,precision_pct,source
+1,30,13,25,"{""east-wing"": [""east_north_gate"", ""east_waiting_approach"", ""west_mid_hall""], ""west-wing"": [""lift_lobby"", ""nurse_station_approach""]}",2,41,0,0,19,100.0,100.0,simulated
+2,30,13,24,"{""east-wing"": [""east_north_gate"", ""south_room_approach"", ""west_south_hall"", ""west_waiting_approach""], ""west-wing"": [""lift_lobby"", ""west_mid_hall"", ""west_south_hall_corner""]}",2,43,0,0,17,100.0,100.0,simulated
+3,30,13,24,"{""east-wing"": [""east_north_gate"", ""north_hall"", ""nurse_station_approach"", ""west_north_gate""], ""west-wing"": [""east_mid_hall"", ""east_south_hall_corner"", ""east_waiting_approach""]}",2,50,0,0,10,100.0,100.0,simulated
+4,30,11,23,"{""east-wing"": [""east_north_gate"", ""south_equipment_approach"", ""west_south_hall_corner""], ""west-wing"": [""north_hall"", ""south_equipment_approach"", ""south_room_approach""]}",2,42,0,0,18,100.0,100.0,simulated
+5,30,12,26,"{""east-wing"": [""north_hall"", ""nurse_station_approach"", ""south_room_approach"", ""west_mid_hall""], ""west-wing"": [""east_north_gate"", ""east_waiting_approach"", ""south_equipment_approach""]}",2,41,0,0,19,100.0,100.0,simulated
+6,30,14,22,"{""east-wing"": [""east_mid_hall"", ""east_waiting_approach"", ""west_mid_hall""], ""west-wing"": [""south_room_approach"", ""west_south_hall""]}",2,41,0,0,19,100.0,100.0,simulated
+7,30,13,21,"{""east-wing"": [""east_north_gate"", ""west_waiting_approach""], ""west-wing"": [""east_mid_hall"", ""nurse_station_approach""]}",2,50,0,0,10,100.0,100.0,simulated
+8,30,12,24,"{""east-wing"": [""east_north_gate"", ""west_mid_hall"", ""west_south_hall"", ""west_waiting_approach""], ""west-wing"": [""east_mid_hall"", ""nurse_station_approach""]}",2,51,0,0,9,100.0,100.0,simulated
+9,30,13,24,"{""east-wing"": [""east_mid_hall"", ""east_south_hall"", ""lift_lobby"", ""west_south_hall_corner""], ""west-wing"": [""east_south_hall_corner"", ""west_north_gate"", ""west_south_hall"", ""west_waiting_approach""]}",2,41,0,0,19,100.0,100.0,simulated
+10,30,12,25,"{""east-wing"": [""east_mid_hall"", ""east_south_hall"", ""east_south_hall_corner"", ""nurse_station_approach""], ""west-wing"": [""east_mid_hall"", ""nurse_station_approach"", ""south_room_approach""]}",2,41,0,0,19,100.0,100.0,simulated

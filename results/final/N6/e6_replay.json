@@ -1,7 +1,15 @@
 {
   "seed_1": {
-    "task_count": 8,
     "decision_rows_count": 13,
+    "decisions_by_type": {
+      "approve": 1,
+      "issue_lease": 1,
+      "no_lease": 3,
+      "propose_lease": 1,
+      "queue": 4,
+      "reject": 3
+    },
+    "leases_issued": 1,
     "sha256": "5d40681f2ae3d4a64c3fc33255fca9f3f33239dc37f83788c175a7708733e395",
     "deterministic": true,
     "sample_timeline": [
@@ -181,8 +189,17 @@
     ]
   },
   "seed_2": {
-    "task_count": 8,
     "decision_rows_count": 16,
+    "decisions_by_type": {
+      "approve": 2,
+      "ask_clarify": 2,
+      "issue_lease": 2,
+      "no_lease": 2,
+      "propose_lease": 2,
+      "queue": 4,
+      "reject": 2
+    },
+    "leases_issued": 2,
     "sha256": "ef86e1d7fe2004c9737bc5b62b794b1d5992a8c2717053f0789e79a5e6d170b2",
     "deterministic": true,
     "sample_timeline": [
@@ -336,8 +353,16 @@
     ]
   },
   "seed_3": {
-    "task_count": 8,
     "decision_rows_count": 11,
+    "decisions_by_type": {
+      "approve": 1,
+      "issue_lease": 1,
+      "no_lease": 1,
+      "propose_lease": 1,
+      "queue": 6,
+      "reject": 1
+    },
+    "leases_issued": 1,
     "sha256": "55338d7c6925ed9acbf7697afe7e5c43ade75994218c5a0b66a45f122b4d5bce",
     "deterministic": true,
     "sample_timeline": [
@@ -517,8 +542,18 @@
     ]
   },
   "seed_4": {
-    "task_count": 8,
     "decision_rows_count": 16,
+    "decisions_by_type": {
+      "approve": 2,
+      "issue_lease": 2,
+      "notify": 1,
+      "plan_handover": 1,
+      "propose_lease": 1,
+      "queue": 7,
+      "react": 1,
+      "replan": 1
+    },
+    "leases_issued": 2,
     "sha256": "a61b766cf9275b73c3b9eec6b23d125cc2d29ee8ec2b6ad785b265422925e8e7",
     "deterministic": true,
     "sample_timeline": [
@@ -658,8 +693,17 @@
     ]
   },
   "seed_5": {
-    "task_count": 8,
     "decision_rows_count": 14,
+    "decisions_by_type": {
+      "approve": 1,
+      "ask_clarify": 2,
+      "issue_lease": 1,
+      "no_lease": 2,
+      "propose_lease": 1,
+      "queue": 5,
+      "reject": 2
+    },
+    "leases_issued": 1,
     "sha256": "db7a3c9ece73b148e6f63f6e16b6aa25eec14d9377253139e58937967ee51a72",
     "deterministic": true,
     "sample_timeline": [
@@ -826,8 +870,13 @@
     ]
   },
   "seed_6": {
-    "task_count": 8,
     "decision_rows_count": 10,
+    "decisions_by_type": {
+      "no_lease": 2,
+      "queue": 6,
+      "reject": 2
+    },
+    "leases_issued": 0,
     "sha256": "7bf033b211007d55aa14d3ac615ede87a8f64ea0fb70f3e55aeadc8dd9ea8332",
     "deterministic": true,
     "sample_timeline": [
@@ -1021,8 +1070,19 @@
     ]
   },
   "seed_7": {
-    "task_count": 8,
     "decision_rows_count": 17,
+    "decisions_by_type": {
+      "approve": 2,
+      "issue_lease": 2,
+      "no_lease": 2,
+      "notify": 1,
+      "propose_lease": 1,
+      "queue": 5,
+      "react": 1,
+      "reject": 2,
+      "replan": 1
+    },
+    "leases_issued": 2,
     "sha256": "b91292ff7ef15647184d9d7c3c44f24976957ac8b47787f3024c45e61f649f06",
     "deterministic": true,
     "sample_timeline": [
@@ -1161,8 +1221,17 @@
     ]
   },
   "seed_8": {
-    "task_count": 8,
     "decision_rows_count": 13,
+    "decisions_by_type": {
+      "approve": 1,
+      "ask_clarify": 2,
+      "issue_lease": 1,
+      "no_lease": 1,
+      "propose_lease": 1,
+      "queue": 6,
+      "reject": 1
+    },
+    "leases_issued": 1,
     "sha256": "edda758802b8c108b6cab5d1e99cda4db087b3b2aa1ea4a4dea80aaab6cdc25b",
     "deterministic": true,
     "sample_timeline": [
@@ -1340,8 +1409,20 @@
     ]
   },
   "seed_9": {
-    "task_count": 8,
     "decision_rows_count": 17,
+    "decisions_by_type": {
+      "alert_operator": 1,
+      "approve": 1,
+      "issue_lease": 1,
+      "notify": 2,
+      "plan_handover": 1,
+      "propose_lease": 1,
+      "queue": 7,
+      "react": 1,
+      "reassign_failed": 1,
+      "replan_failed": 1
+    },
+    "leases_issued": 1,
     "sha256": "8413a6d4f1cb49324e311dca8ac239fa361e25cbad165a134550e1f2c8a1faa6",
     "deterministic": true,
     "sample_timeline": [
@@ -1501,8 +1582,22 @@
     ]
   },
   "seed_10": {
-    "task_count": 8,
     "decision_rows_count": 20,
+    "decisions_by_type": {
+      "approve": 2,
+      "ask_clarify": 1,
+      "issue_lease": 2,
+      "no_lease": 1,
+      "notify": 1,
+      "plan_handover": 1,
+      "propose_lease": 2,
+      "queue": 6,
+      "react": 1,
+      "reassign": 1,
+      "reject": 1,
+      "replan_failed": 1
+    },
+    "leases_issued": 2,
     "sha256": "33da19dd8f4830e4ef67202275ea75849cc3b9fb0adbb678d6aeb4486c91acff",
     "deterministic": true,
     "sample_timeline": [

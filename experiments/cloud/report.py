@@ -34,7 +34,8 @@ ELSEWHERE = {"T1": "T1_results", "T3": "T3_results", "T6": "T6_results", "T8": "
 SOURCE_NOTE = ("Source: `real_bedrock` = Amazon Bedrock Nova Lite (deployed cloud or our own local server); "
                "`real_slm` = a real edge model; `mock_llm` = the rule-based stand-in model (protocol and code behaviour, "
                "not model quality); `measured` = no model involved, or a physical/simulated measurement; "
-               "`modelled` / `simulated` = computed from a model or a simulation rather than the running system.")
+               "`modelled` / `simulated` = computed from a model or a simulation rather than the running system; "
+               "`static_audit` = a static scan of the repository (no running system).")
 
 
 def field(text: str, name: str) -> str:

@@ -1,4 +1,46 @@
 {
+  "inputs": {
+    "kind": "synthetic",
+    "why": "traces/ holds 1 outage(s) with loss >= 90% (fewer than 10), so the fit uses a seeded synthetic sample",
+    "generator": {
+      "seed": 42,
+      "inter_arrivals": "50 x exponential(scale=180 s)",
+      "durations": "10 hand-set values + 40 x lognormal(mean=2.6, sigma=0.5)"
+    }
+  },
+  "trace_observations": {
+    "files": [
+      {
+        "name": "corridor",
+        "path": "traces/iisc_corridor.csv",
+        "label": "IISc Department Corridor Route Trace (short synthetic example for local testing)",
+        "samples": 21,
+        "duration_s": 10.0
+      },
+      {
+        "name": "lift",
+        "path": "traces/iisc_lift.csv",
+        "label": "IISc Central Block Lift Trip Trace (short synthetic example for local testing)",
+        "samples": 21,
+        "duration_s": 20.0
+      },
+      {
+        "name": "basement",
+        "path": "traces/iisc_basement.csv",
+        "label": "IISc Basement Corridor Outage Trace (short synthetic example for local testing)",
+        "samples": 22,
+        "duration_s": 30.0
+      }
+    ],
+    "total_duration_s": 60.0,
+    "outage_durations_s": [
+      20.0
+    ],
+    "good_intervals_s": [
+      5.0
+    ],
+    "fit_feasible": false
+  },
   "poisson_arrival": {
     "mean_inter_arrival_sec": 152.270004226719,
     "lambda_per_sec": 0.006567281619767163,
@@ -40,10 +82,54 @@
     "loss_good_state": 0.005,
     "loss_bad_state": 0.995
   },
-  "monte_carlo_validation": {
+  "monte_carlo": {
     "missions_per_seed": 10000,
-    "seeds": 10,
-    "c1_mean_success_at_20_outages_hr": 0.81996,
-    "c2_mean_success_at_20_outages_hr": 0.7806300000000002
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "mission_duration_s": 90.0,
+    "duration_distribution_sampled": "weibull",
+    "assumptions": {
+      "c1_survives_outages_shorter_than_s": 60.0,
+      "c2_survives_outages_shorter_than_s": 2.0
+    },
+    "c1_mean_success_at_20_outages_hr": 1.0,
+    "c1_success_range_over_seeds_at_20_outages_hr": [
+      1.0,
+      1.0
+    ],
+    "c2_mean_success_at_20_outages_hr": 0.6071099999999999,
+    "mean_success_by_lambda": {
+      "C1": {
+        "2.0": 1.0,
+        "5.0": 1.0,
+        "10.0": 1.0,
+        "15.0": 1.0,
+        "20.0": 1.0,
+        "30.0": 1.0
+      },
+      "C2": {
+        "2.0": 0.9520100000000001,
+        "5.0": 0.88294,
+        "10.0": 0.78053,
+        "15.0": 0.6896699999999999,
+        "20.0": 0.6071099999999999,
+        "30.0": 0.47029
+      }
+    }
+  },
+  "verdict": {
+    "ks_p_at_least_0_05": true,
+    "c1_success_at_20_per_hr_at_least_0_90": true,
+    "result": "PASS"
   }
 }
