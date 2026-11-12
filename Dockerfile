@@ -30,6 +30,7 @@ ENV NIMBUS_BACKEND=aws \
     AWS_REGION=ap-south-1 \
     NIMBUS_PACK=hospital_sim6 \
     PORT=8000 \
+    NIMBUS_BIND_HOST=0.0.0.0 \
     DATA_DIR=/app/data
 
 RUN useradd --create-home nimbus && mkdir -p /app/data && chown nimbus /app/data
