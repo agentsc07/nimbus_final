@@ -14,6 +14,10 @@ when they need help or have a result.
 This repository contains the whole system: the cloud service, the edge software, a simulated hospital with six
 robots, the web apps, the AWS deployment, and the experiments that measure all of it against the plan.
 
+Baseline Version can be found under :
+**Baseline Tag:**  rt-baseline 
+**Commit Hash:** f03afd7
+
 **Demo:** a request typed in the app, answered by the cloud, and carried out by the simulated robots
 ([docs/media/demo.mp4](docs/media/demo.mp4)).
 
