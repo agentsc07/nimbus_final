@@ -289,6 +289,76 @@ def test_fault_accepts_named_custom_profiles_with_parameters(api):
     assert call("POST", api + "/fault", {"profile": "healthy"})[0] == 200
 
 
+# -- carried over from PR #10 (closed): lease timestamp validation and Terraform baselines ----------------------
+
+def test_semantic_lease_errors_strict_validation():
+    """PR #10 D: offset-aware ISO-8601 timestamps, presence, and deadline <= expiry; never raises."""
+    import contracts
+
+    base = {"lease_id": "lease-001", "deadline_ts": "2026-10-02T10:12:00Z", "expiry_ts": "2026-10-02T10:15:00Z"}
+    assert contracts.semantic_lease_errors(base) == []
+    assert any("deadline_ts: field is required" in e
+               for e in contracts.semantic_lease_errors({"expiry_ts": "2026-10-02T10:15:00Z"}))
+    assert any("expiry_ts: field is required" in e
+               for e in contracts.semantic_lease_errors({"deadline_ts": "2026-10-02T10:12:00Z"}))
+    assert any("must be an ISO-8601 string" in e
+               for e in contracts.semantic_lease_errors({"deadline_ts": 12345, "expiry_ts": "2026-10-02T10:15:00Z"}))
+    assert any("invalid ISO-8601 timestamp" in e
+               for e in contracts.semantic_lease_errors({"deadline_ts": "not-a-timestamp", "expiry_ts": "2026-10-02T10:15:00Z"}))
+    assert any("must be offset-aware" in e
+               for e in contracts.semantic_lease_errors({"deadline_ts": "2026-10-02T10:12:00", "expiry_ts": "2026-10-02T10:15:00"}))
+    assert contracts.semantic_lease_errors({"deadline_ts": "2026-10-02T10:12:00+05:30", "expiry_ts": "2026-10-02T10:15:00+05:30"}) == []
+    assert any("must be <= expiry_ts" in e
+               for e in contracts.semantic_lease_errors({"deadline_ts": "2026-10-02T10:20:00Z", "expiry_ts": "2026-10-02T10:15:00Z"}))
+    assert contracts.semantic_lease_errors(None) == ["$: lease must be a JSON object"]
+    assert contracts.semantic_lease_errors("string") == ["$: lease must be a JSON object"]
+
+
+TF_DIR = Path(server.__file__).resolve().parent / "infra" / "terraform"
+
+
+def test_terraform_public_ip_is_derived_from_egress_mode():
+    """NIM-H04 / PR #10 B1: the default stack must be able to reach ECR and AWS APIs."""
+    variables = (TF_DIR / "variables.tf").read_text(encoding="utf-8")
+    main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
+    block = variables[variables.index('variable "assign_public_ip"'):]
+    assert "default     = null" in block[:block.index("}") + 1]
+    assert 'var.assign_public_ip != null ? var.assign_public_ip : var.egress_mode == "public_ip"' in main
+    assert "assign_public_ip = local.assign_public_ip" in main
+
+
+def test_terraform_iot_arns_have_no_mqtt_wildcards_and_subscribe_uses_topicfilter():
+    """NIM-M23 / PR #10 B2: IAM treats MQTT '+' literally; Subscribe needs topicfilter/ ARNs; probe is cloud -> edge."""
+    import re
+
+    for name in ("main.tf", "cloud.tf"):
+        text = (TF_DIR / name).read_text(encoding="utf-8")
+        arns = re.findall(r'"(arn:aws:iot:[^"]*)"', text)
+        assert arns, name
+        assert not [a for a in arns if "+" in a], (name, arns)
+        # each statement's text runs from its Action to the closing brace of the statement object
+        subscribe = re.findall(r'Action\s*=\s*\["iot:Subscribe"\](.*?)\n\s*\}', text, re.S)
+        for stmt in subscribe:
+            assert "topicfilter/" in stmt and ":topic/" not in stmt, (name, stmt)
+
+    main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
+    edge = main[main.index('resource "aws_iot_policy" "edge_cluster"'):]
+    publish = re.search(r'Action\s*=\s*\["iot:Publish"\](.*?)\n\s*\}', edge, re.S).group(1)
+    receive = re.search(r'Action\s*=\s*\["iot:Receive"\](.*?)\n\s*\}', edge, re.S).group(1)
+    assert "probe" not in publish and "probe" in receive
+
+
+def test_terraform_s3_security_baselines():
+    """PR #10 B3: both buckets private, owner-enforced and encrypted; results versioned; static app readable via OAC."""
+    main = (TF_DIR / "main.tf").read_text(encoding="utf-8")
+    for bucket in ("outputs", "static_app"):
+        assert f'resource "aws_s3_bucket_public_access_block" "{bucket}"' in main
+        assert f'resource "aws_s3_bucket_ownership_controls" "{bucket}"' in main
+        assert f'resource "aws_s3_bucket_server_side_encryption_configuration" "{bucket}"' in main
+    assert 'resource "aws_s3_bucket_versioning" "outputs"' in main
+    assert 'resource "aws_s3_bucket_policy" "static_app"' in main and "AllowCloudFrontOAC" in main
+
+
 # -- security headers ------------------------------------------------------------------------------------------
 
 def test_pages_and_json_send_security_headers(api):

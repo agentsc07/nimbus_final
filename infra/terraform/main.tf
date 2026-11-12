@@ -432,6 +432,42 @@ resource "aws_s3_bucket" "outputs" {
   force_destroy = false
 }
 
+# Result evidence: never public, owner-enforced, encrypted at rest, versioned (an overwrite keeps the old object).
+# The live buckets already have the first three (verified read-only on 12 Nov); these resources make them explicit.
+resource "aws_s3_bucket_public_access_block" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_versioning" "outputs" {
+  bucket = aws_s3_bucket.outputs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # ---------------------------------------------------------------------------
 # IAM: least privilege (NFR-5). The task role can touch exactly the tables,
 # queue, bucket and topics created above, plus Bedrock invoke. No wildcards
@@ -607,6 +643,60 @@ resource "aws_iot_policy" "edge_cluster" {
 resource "aws_s3_bucket" "static_app" {
   bucket        = "${local.name_prefix}-static-app"
   force_destroy = false
+}
+
+resource "aws_s3_bucket_public_access_block" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_ownership_controls" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Only the CloudFront distribution (through its origin access control) may read the static app; the bucket stays
+# private. Without this policy an enabled distribution would get 403 from S3.
+data "aws_iam_policy_document" "static_app_oac" {
+  statement {
+    sid       = "AllowCloudFrontOAC"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.static_app.arn}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.static_app.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "static_app" {
+  bucket = aws_s3_bucket.static_app.id
+  policy = data.aws_iam_policy_document.static_app_oac.json
 }
 
 resource "aws_cloudfront_origin_access_control" "static_app" {
