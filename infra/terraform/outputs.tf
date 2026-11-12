@@ -24,8 +24,13 @@ output "table_names" {
 }
 
 output "iot_topics" {
-  description = "Cloud-edge messaging topic names (leases down, escalations/check-ins up)."
+  description = "Cloud-edge MQTT topic filters for clients (leases down, escalations/check-ins up). `+` is the MQTT single-level wildcard; the IAM and IoT policies spell the cluster segment as `*` or as the thing name instead."
   value       = local.iot_topics
+}
+
+output "alerts_topic_arn" {
+  description = "SNS topic the missed check-in alarm notifies; null when alert_email is empty."
+  value       = one(aws_sns_topic.alerts[*].arn)
 }
 
 output "state_table" {
