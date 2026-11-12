@@ -8,9 +8,9 @@
 #   ./run_all.sh kinematic --slm-mode ollama  # require a real local Ollama model
 #   HEADLESS=1 ./run_all.sh gazebo   # Gazebo without a GUI window
 #
-# By default the requester and lease authority are the deployed cloud. Set
-# NIMBUS_CLOUD_URL to a different deployment, or NIMBUS_LOCAL_CLOUD=1 for the
-# in-repository cloud server.
+# By default the cloud is the in-repository server on 127.0.0.1:$PORT (NIMBUS_LOCAL_CLOUD=1), and an
+# exported NIMBUS_CLOUD_URL is ignored in that mode. To drive a deployed cloud, say so explicitly:
+#   NIMBUS_LOCAL_CLOUD=0 NIMBUS_CLOUD_URL=<api_endpoint> NIMBUS_EDGE_TOKEN=<edge token> ./run_all.sh kinematic
 # Stop with ./stop_all.sh . Logs go to logs/ .
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -74,7 +74,7 @@ case "$SYSTEM_MODE" in
   *) echo "!! --system-mode must be C1, C2, or C3" >&2; exit 2 ;;
 esac
 export NIMBUS_MODE="$SYSTEM_MODE"
-LOGS="${LOGS_DIR:-$ROOT/logs}"; PIDS="$LOGS/pids"; mkdir -p "$LOGS"; : > "$PIDS"
+LOGS="${LOGS_DIR:-$ROOT/logs}"; PIDS="$LOGS/pids"; mkdir -p "$LOGS"; touch "$PIDS"   # keep the previous run's PIDs for stop_all.sh below
 # Keep the existing logs/ directory as the live, latest-run view.  In
 # addition, archive each process log under a unique run directory so evidence
 # from an earlier Gazebo run is not overwritten by the next startup.
@@ -112,13 +112,27 @@ export NIMBUS_MINIMUM_FRONT_DISTANCE="${NIMBUS_MINIMUM_FRONT_DISTANCE:-0.30}"
 export NIMBUS_SLM_MODE="$SLM_MODE"
 export NIMBUS_SLM_MODEL="$SLM_MODEL"
 # Default to local cloud (NIMBUS_LOCAL_CLOUD=1) to guarantee local runs never accidentally contact production.
-# To explicitly target deployed AWS cloud, set NIMBUS_LOCAL_CLOUD=0 and NIMBUS_CLOUD_URL.
-DEPLOYED_CLOUD_URL="${NIMBUS_DEPLOYED_CLOUD_URL:-https://qrgdidp9te.execute-api.ap-south-1.amazonaws.com}"
+# In local mode the cloud is always this machine's server: an NIMBUS_CLOUD_URL left exported from another shell
+# must not silently point the edges and viewer at a remote deployment while a local server starts unused.
+# To target a deployed cloud, set NIMBUS_LOCAL_CLOUD=0 and NIMBUS_CLOUD_URL (there is no built-in default).
+DEPLOYED_CLOUD_URL="${NIMBUS_DEPLOYED_CLOUD_URL:-}"
 if [ "${NIMBUS_LOCAL_CLOUD:-1}" = 1 ]; then
-  CLOUD="${NIMBUS_CLOUD_URL:-http://127.0.0.1:$PORT}"
+  if [ -n "${NIMBUS_CLOUD_URL:-}" ] && [ "${NIMBUS_CLOUD_URL%/}" != "http://127.0.0.1:$PORT" ]; then
+    echo "== NIMBUS_LOCAL_CLOUD=1: ignoring NIMBUS_CLOUD_URL=$NIMBUS_CLOUD_URL (set NIMBUS_LOCAL_CLOUD=0 to use it)"
+  fi
+  CLOUD="http://127.0.0.1:$PORT"
   USE_LOCAL_CLOUD=1
 else
-  CLOUD="${NIMBUS_CLOUD_URL:-$DEPLOYED_CLOUD_URL}"
+  if [ -z "${NIMBUS_CLOUD_URL:-}" ]; then
+    echo "!! NIMBUS_LOCAL_CLOUD=0 needs an explicit NIMBUS_CLOUD_URL=<api_endpoint> (no deployed default)." >&2
+    exit 2
+  fi
+  if [ -z "${NIMBUS_EDGE_TOKEN:-}" ]; then
+    echo "!! A deployed cloud is fail-closed: set NIMBUS_EDGE_TOKEN for the edges (and use the requester/operator" >&2
+    echo "   tokens in the apps: open /#token=<requester> and /operator#token=<operator>)." >&2
+    exit 2
+  fi
+  CLOUD="${NIMBUS_CLOUD_URL%/}"
   USE_LOCAL_CLOUD=0
 fi
 # C2/C3 need a cloud that runs that mode. The default deployed endpoint runs C1
@@ -127,7 +141,7 @@ fi
 # (then the edge talks to a cloud actually running that mode), or
 # NIMBUS_LOCAL_CLOUD=1 for a local one.
 if [ "$SYSTEM_MODE" != "C1" ] && [ "$USE_LOCAL_CLOUD" != 1 ]; then
-  if [ "$CLOUD" = "$DEPLOYED_CLOUD_URL" ]; then
+  if [ -n "$DEPLOYED_CLOUD_URL" ] && [ "$CLOUD" = "${DEPLOYED_CLOUD_URL%/}" ]; then
     echo "!! $SYSTEM_MODE cannot use the default deployed cloud: that endpoint runs C1 and its mode cannot be changed here." >&2
     echo "   Use NIMBUS_LOCAL_CLOUD=1 for a local cloud, or NIMBUS_CLOUD_URL=<a $SYSTEM_MODE endpoint> for a dedicated operator." >&2
     exit 2
@@ -213,10 +227,11 @@ if [ "$USE_LOCAL_CLOUD" = 1 ]; then
   # (exactly its intended use); the deployed-cloud branch below is untouched.
   export NIMBUS_AUTH_DISABLED="${NIMBUS_AUTH_DISABLED:-1}"
   start cloud python3 -u server.py
-  waitfor "$CLOUD/fleet" cloud 30 || exit 1
+  waitfor "$CLOUD/health" cloud 30 || exit 1
 else
   echo "== using deployed cloud: $CLOUD"
-  waitfor "$CLOUD/fleet" deployed-cloud 30 || exit 1
+  # /health is public; /fleet would need an operator token, which edges do not hold.
+  waitfor "$CLOUD/health" deployed-cloud 30 || exit 1
 fi
 
 # --- 3. edge supervisors (one per wing) -----------------------------------------------------------
