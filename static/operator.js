@@ -10,11 +10,64 @@ function esc(s) {
   }[c]));
 }
 
+/* Authentication. The deployed cloud requires `Authorization: Bearer <operator token>` on every
+   console call. Open /operator#token=<operator token> once (the fragment never reaches the
+   server) or paste it into the banner; it is kept in sessionStorage for this tab only. */
+const TOKEN_KEY = "nimbus.token.operator";
+function readToken() { try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; } }
+function saveToken(t) {
+  try { if (t) sessionStorage.setItem(TOKEN_KEY, t); else sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* storage blocked */ }
+}
+(function takeTokenFromHash() {
+  const m = location.hash.match(/(?:^#|&)token=([^&]+)/);
+  if (m) {
+    saveToken(decodeURIComponent(m[1]));
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();
+
+function showAuthBanner(status) {
+  if (document.getElementById("auth-banner")) return;
+  const bar = document.createElement("div");
+  bar.id = "auth-banner";
+  bar.setAttribute("role", "alert");
+  bar.style.cssText = "position:sticky;top:0;z-index:1000;background:#7a1f1f;color:#fff;padding:8px 12px;font:14px system-ui,sans-serif;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+  const msg = document.createElement("span");
+  msg.textContent = status === 403
+    ? "This token is not allowed to do that (403)."
+    : "This server requires an operator token (401). Paste it to continue:";
+  const input = document.createElement("input");
+  input.type = "password"; input.id = "auth-token-input"; input.placeholder = "operator token"; input.autocomplete = "off";
+  const save = document.createElement("button");
+  save.textContent = "Use token";
+  save.onclick = () => { saveToken(input.value.trim()); location.reload(); };
+  const clear = document.createElement("button");
+  clear.textContent = "Clear token";
+  clear.onclick = () => { saveToken(""); location.reload(); };
+  bar.append(msg, input, save, clear);
+  document.body.prepend(bar);
+}
+
 async function api(method, path, body) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json" };
+  const token = readToken();
+  if (token) headers.Authorization = "Bearer " + token;
+  const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
-  return { status: res.status, data: await res.json() };
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  if (res.status === 401 || res.status === 403) showAuthBanner(res.status);
+  return { status: res.status, data };
+}
+
+/* The clarification question is an object {question, possible_readings}. */
+function questionText(q) {
+  if (!q) return "";
+  if (typeof q === "string") return q;
+  const readings = Array.isArray(q.possible_readings) && q.possible_readings.length
+    ? ` (${q.possible_readings.join(" · ")})` : "";
+  return (q.question || "") + readings;
 }
 
 const msgId = () => "op-" + Math.random().toString(36).slice(2, 12);
@@ -141,9 +194,9 @@ function syncDemoTask(task) {
     setDemoProgressBar("clarifying");
     if (clarifyBox) {
       clarifyBox.style.display = "flex";
-      $("demo-clarify-prompt").textContent = task.question || "Clarification needed:";
+      $("demo-clarify-prompt").textContent = questionText(task.question) || "Clarification needed:";
     }
-    appendDemoStream("clarifying", "clarifying", "Clarifying", task.question || "Awaiting requester answer");
+    appendDemoStream("clarifying", "clarifying", "Clarifying", questionText(task.question) || "Awaiting requester answer");
   } else {
     if (clarifyBox) clarifyBox.style.display = "none";
   }
@@ -263,7 +316,8 @@ async function refreshTasks() {
 }
 async function _doRefreshTasks() {
   refreshStock();
-  const { data } = await api("GET", "/tasks");
+  const { status, data } = await api("GET", "/tasks");
+  if (status !== 200 || !Array.isArray(data.tasks)) return;
   const rows = $("task-rows");
   rows.innerHTML = "";
   for (const t of data.tasks) {
@@ -292,7 +346,8 @@ function displayItemName(item) {
 }
 
 async function refreshStock() {
-  const { data } = await api("GET", "/fleet");
+  const { status, data } = await api("GET", "/fleet");
+  if (status !== 200 || !Array.isArray(data.fleet)) return;
   const clusters = data.fleet;
   const rawItems = [...new Set(clusters.flatMap((c) => Object.keys(c.stock)))];
   const itemsMap = new Map();
@@ -322,43 +377,49 @@ async function selectTask(taskId) {
 
 async function renderDetail() {
   const box = $("detail");
-  if (!selectedTaskId) {
+  const id = selectedTaskId;   // responses for a task that is no longer selected are dropped, so the
+  if (!id) {                   // panel (and its Pause/Cancel buttons) always belongs to the selected task
     box.innerHTML = `<p class="muted">Click a row to load its decision timeline.</p>`;
     return;
   }
-  const { status, data: task } = await api("GET", `/tasks/${selectedTaskId}`);
+  const { status, data: task } = await api("GET", `/tasks/${encodeURIComponent(id)}`);
+  if (id !== selectedTaskId) return;
   if (status === 404) { box.innerHTML = `<p class="muted">Task not found.</p>`; return; }
+  if (status !== 200) { box.innerHTML = `<p class="muted">Could not load the task (HTTP ${esc(status)}).</p>`; return; }
 
-  const { data: tl } = await api("GET", `/tasks/${selectedTaskId}/timeline`);
+  const { data: tl } = await api("GET", `/tasks/${encodeURIComponent(id)}/timeline`);
+  if (id !== selectedTaskId) return;
   box.innerHTML = `
     <h3>${esc(task.task_id)} <span class="chip ${esc(task.status)}">${esc(task.status)}</span></h3>
     <p class="muted">${esc(task.request_text)}</p>
     <p>
       <button id="pause-btn">Pause</button>
       <button id="cancel-btn">Cancel</button>
-      <span class="muted">intents are recorded, not delivered</span>
+      <span class="muted">the cloud records the intent and publishes a stop lease; robot stop is confirmed by the edge, not shown here</span>
     </p>
     <h4>Decision timeline</h4>
-    <ol class="timeline">${tl.timeline.map((r) =>
-      `<li><strong>${esc(r.who)}</strong>: ${esc(r.output.event || r.output.decision || "?")}
+    <ol class="timeline">${(tl.timeline || []).map((r) =>
+      `<li><strong>${esc(r.who)}</strong>: ${esc((r.output && (r.output.event || r.output.decision)) || "?")}
        <span class="muted">${esc(r.timestamp)}</span></li>`).join("")}</ol>`;
 
-  $("pause-btn").onclick = () => control("pause");
-  $("cancel-btn").onclick = () => control("cancel");
+  $("pause-btn").onclick = () => control("pause", task.task_id);
+  $("cancel-btn").onclick = () => control("cancel", task.task_id);
 }
 
-async function control(action) {
+async function control(action, taskId) {
+  const target = taskId || selectedTaskId;
+  if (!target) return;
   const cancelBtn = $("cancel-btn");
   const pauseBtn = $("pause-btn");
   if (action === "cancel" && cancelBtn) {
     cancelBtn.disabled = true;
-    cancelBtn.textContent = "Cancelling... (Awaiting Edge Ack)";
+    cancelBtn.textContent = "Cancelling...";
   } else if (action === "pause" && pauseBtn) {
     pauseBtn.disabled = true;
-    pauseBtn.textContent = "Pausing... (Awaiting Edge Ack)";
+    pauseBtn.textContent = "Pausing...";
   }
   const { status, data } = await api(
-    "POST", `/tasks/${selectedTaskId}/control`, { action, message_id: msgId() }
+    "POST", `/tasks/${encodeURIComponent(target)}/control`, { action, message_id: msgId() }
   );
   if (status !== 201) {
     alert(`Intent not recorded: ${data.error || status}`);
