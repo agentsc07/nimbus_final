@@ -82,6 +82,13 @@ class Reactor:
                                                                      "rationale": "the live lease already avoids these zones"},
                                    cur["version"]))
             return react
+        parked = o.waits.get(task["task_id"])
+        if parked and parked["payload"].get("_resume") and parked["version"] == cur["version"]:
+            react.rows.append(_row("rule", {"blocked_zones": zones}, {"decision": "react", "action": "no_action",
+                                                                     "rationale": "the robot is parked until a route exists; "
+                                                                                  "the cloud re-plans when the map changes"},
+                                   cur["version"]))
+            return react
         robot_zone = payload.get("robot_zone") or o.fleet.robot_zone(cur["assigned_robots"][0])
         for z in zones:   # selective sharing (FR-11): tell only the clusters whose area or live leases include the zone
             for c in o.mapstate.affected_clusters(z, o.repo, o.clock.now()):
@@ -130,13 +137,13 @@ class Reactor:
                                                                        "text": f"re-plan failed: {out.reason}"}, cur["version"]))
                 self._notice(react, Notice("operator", f"{task['task_id']}: re-plan failed ({out.reason}). Operator decision needed.",
                                            task_id=task["task_id"], lease_version=cur["version"]), cur["version"], task)
-                parked = self._park(task, cur, zones, payload, react)
+                parked = self._park(task, cur, zones, payload)
                 if parked is not None:
                     parked.rows, parked.reason = out.rows + parked.rows, out.reason
                     react.outcome = parked
         return react
 
-    def _park(self, task: dict, cur: dict, zones: list, payload: dict, react: Reaction) -> Outcome | None:
+    def _park(self, task: dict, cur: dict, zones: list, payload: dict) -> Outcome | None:
         """No plan avoids the zones that just closed, but the live lease still runs through one of them (FR-5):
         park the robot under the next lease version (it keeps its claim and its load) and look again later."""
         o = self.o
@@ -147,8 +154,8 @@ class Reactor:
         if stop.kind != "stood_down":
             return None
         self._arm_resume(task, {k: v for k, v in payload.items() if k != "_retry"}, stop.lease["version"])
-        react.rows.append(_row("rule", {"zones": through}, {"decision": "park_until_route", "zones": through,
-                                                           "check_every_s": RESUME_CHECK_S}, stop.lease["version"]))
+        stop.rows.append(_row("rule", {"zones": through}, {"decision": "park_until_route", "zones": through,
+                                                          "check_every_s": RESUME_CHECK_S}, stop.lease["version"]))
         return stop
 
     def _arm_resume(self, task: dict, payload: dict, version: int) -> None:

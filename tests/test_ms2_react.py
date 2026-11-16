@@ -246,3 +246,18 @@ def test_a_failed_re_plan_whose_lease_does_not_use_the_closed_zone_is_left_alone
     task, _ = leased(orch)
     r = orch.react.on_event(task, event(where="W2", segments=[{"segment_id": "W2", "state": "blocked"}]))
     assert r.outcome is None or r.outcome.kind != "stood_down"
+
+
+def test_a_repeated_event_while_parked_is_logged_once_without_a_new_alert_or_re_plan():
+    orch, t, r = _parked_blanket_run("C3")
+    t["lease"] = r.outcome.lease
+    alerts = len(orch.notifier.for_audience("operator"))
+    again = orch.react.on_event(t, event(where="west_mid_hall", segments=[{"segment_id": "west_mid_hall", "state": "closed"}]))
+    assert again.outcome is None and len(orch.notifier.for_audience("operator")) == alerts
+    assert [x["output"]["action"] for x in again.rows] == ["no_action"] and orch.repo.current(t["task_id"])["version"] == 2
+
+
+def test_parking_logs_the_stop_before_the_reason_it_waits_for():
+    orch, t, r = _parked_blanket_run("C3")
+    order = [x["output"].get("decision") for x in r.outcome.rows]
+    assert order.index("stand_down") < order.index("park_until_route")
