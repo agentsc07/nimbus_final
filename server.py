@@ -1430,12 +1430,29 @@ def process_escalation(
         if task is None:
             return 404, {"error": f"unknown task {task_id}"}
 
+        if esc_type == "OUTPUT_READY" and task["status"] == "completed":
+            # The same result again under a fresh message id (an edge replaying after a restart): acknowledge it, run
+            # none of the completion side effects twice (no second summary, notice, archive upload or leg advance).
+            store.see_message_id(message_id)
+            return 200, {
+                "duplicate": True,
+                "already_completed": task["status"] == "completed",
+                "status": "already_completed",
+                "task_id": task_id,
+                "result_ref": task.get("result_ref"),
+            }
+
+        # An escalation is produced under a lease the cloud issued (FR-5, FR-8; escalation contract): no lease yet, an
+        # older version or a version never issued are all refused, before anything is logged or changed (red-team #19).
         current = task["lease"]["version"] if task.get("lease") else 0
+        if current == 0:
+            return 409, {"error": "no lease has been issued for this task", "current": 0}
         if body["lease_version"] < current:
             return 409, {"error": "outdated lease_version", "current": current}
+        if body["lease_version"] > current:
+            return 409, {"error": "lease_version was never issued", "current": current}
 
-        if esc_type == "OUTPUT_READY" and (task["status"] == "completed"
-                                           or body["payload"]["result_ref"] in task.get("leg_results", [])):
+        if esc_type == "OUTPUT_READY" and body["payload"]["result_ref"] in task.get("leg_results", []):
             # The same result again under a fresh message id (an edge replaying after a restart): acknowledge it, run
             # none of the completion side effects twice (no second summary, notice, archive upload or leg advance).
             store.see_message_id(message_id)
