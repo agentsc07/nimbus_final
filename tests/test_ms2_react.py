@@ -99,7 +99,7 @@ def test_no_route_left_alerts_the_operator():
     orch = make_orch()
     task, _ = leased(orch)
     r = orch.react.on_event(task, event(segments=[{"segment_id": "E3", "state": "blocked"}, {"segment_id": "E4", "state": "blocked"}]))
-    assert r.outcome.kind == "replan_failed"
+    assert r.outcome.kind == "stood_down"              # the robot parks rather than keep a lease through E3 (#13)
     assert any(x["output"].get("decision") == "alert_operator" for x in r.rows)
     assert orch.notifier.for_audience("operator")
 
@@ -195,3 +195,54 @@ def test_a_stated_deadline_is_kept():
     orch = make_orch(override=_spec_call(deadline_minutes=60))
     out = orch.handle_request(new_task(), "Deliver a monitor to 2C within 20 minutes")
     assert out.spec["deadline_minutes"] == 20
+
+
+# -- no route left: park under a new version, re-plan when the map changes (red-team #13) ---------------------------
+
+def _parked_blanket_run(mode):
+    from cloud.pack import Pack
+    orch = make_orch(pack=Pack.load("hospital_sim"), mode=mode)
+    text = "Deliver a blanket to 2C, routine"
+    t = new_task(1, text)
+    out = orch.handle_request(t, text)
+    t.update(spec=out.spec, lease=out.lease, reservation=out.reservation, status="leased", request_text=text)
+    orch.fleet.heartbeat("west-wing", {"robots": [{"id": "robot_2", "state": "busy", "zone": "west_south_hall"}]})
+    r = orch.react.on_event(t, event(where="west_mid_hall", segments=[{"segment_id": "west_mid_hall", "state": "closed"}]))
+    return orch, t, r
+
+
+def test_no_route_left_parks_the_robot_under_the_next_version_instead_of_keeping_a_lease_through_the_closure():
+    for mode in ("C1", "C3"):
+        orch, t, r = _parked_blanket_run(mode)
+        lease = r.outcome.lease
+        assert r.outcome.kind == "stood_down" and lease["version"] == 2
+        assert lease["task_sequence"] == [{"cmd": "stop", "params": {}}] and lease["allowed_zones"] == ["west_south_hall"]
+        assert orch.repo.current(t["task_id"])["version"] == 2 and "west_mid_hall" not in orch.repo.current(t["task_id"])["allowed_zones"]
+        decisions = [x["output"].get("decision") for x in r.rows + r.outcome.rows]
+        assert "alert_operator" in decisions and "stand_down" in decisions and "park_until_route" in decisions
+        assert orch.fleet.clusters["west-wing"]["stock"]["blanket"] == 14         # the robot keeps its load: nothing returned
+
+
+def test_a_parked_task_waits_quietly_then_is_re_planned_from_where_the_robot_stands_once_the_way_reopens():
+    orch, t, r = _parked_blanket_run("C3")
+    t["lease"] = r.outcome.lease
+    beat = {"robots": [{"id": "robot_2", "state": "busy", "zone": "west_south_hall"}]}
+    orch.clock.advance(31)
+    orch.fleet.heartbeat("west-wing", beat)           # the edge keeps reporting while it waits
+    quiet = orch.ticker.tick([t])                     # still closed: no new lease, no log rows
+    assert quiet.apply == [] and orch.repo.current(t["task_id"])["version"] == 2
+    orch.mapstate.clear("west_mid_hall")
+    orch.clock.advance(31)
+    orch.fleet.heartbeat("west-wing", beat)
+    res = orch.ticker.tick([t])
+    out = res.apply[0][1]
+    assert out.kind == "leased" and out.lease["version"] == 3 and out.lease["cluster_id"] == "west-wing"
+    assert "west_mid_hall" in out.lease["allowed_zones"] and out.lease["task_sequence"][0]["params"]["to"] == "west_south_hall"
+    assert any(x["output"].get("action") == "resume_after_park" for x in out.rows)
+
+
+def test_a_failed_re_plan_whose_lease_does_not_use_the_closed_zone_is_left_alone():
+    orch = make_orch()
+    task, _ = leased(orch)
+    r = orch.react.on_event(task, event(where="W2", segments=[{"segment_id": "W2", "state": "blocked"}]))
+    assert r.outcome is None or r.outcome.kind != "stood_down"

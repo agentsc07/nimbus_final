@@ -92,11 +92,15 @@ def test_sc2_corridor_blocked_then_a_west_gate_closes_and_the_last_leg_gets_a_ne
             "payload": {"what_happened": "west_north_gate closed", "where": "west_north_gate", "robots_saw": ["door shut"],
                         "segments": [{"segment_id": "west_north_gate", "state": "closed"}]}}
     st, body = http_json("POST", api + "/escalations", gate)
-    assert st == 201 and body["replanned"] is True and body["lease_version"] == 4
+    # P1's map (since 7 Nov) has no way into the west wing once east_mid_hall and west_north_gate are both shut, so
+    # no plan exists: the robot is parked under a new lease version instead of keeping a lease through the gate (#13).
+    assert st == 201 and body["replanned"] is False and body["lease_version"] == 4
     t = task(api, tid)
-    assert "west_north_gate" in t["lease"]["forbidden_zones"] and "west_mid_hall" in t["lease"]["allowed_zones"]
+    assert t["lease"]["task_sequence"] == [{"cmd": "stop", "params": {}}] and t["lease"]["allowed_zones"] == ["north_hall"]
     _, tl = http_json("GET", api + f"/tasks/{tid}/timeline")
-    assert {"react", "replan", "advance_leg", "plan_handover"} <= {r["output"].get("decision") for r in tl["timeline"]}
+    assert {"react", "advance_leg", "plan_handover", "alert_operator", "stand_down", "park_until_route"} <= \
+        {r["output"].get("decision") for r in tl["timeline"]}
+    assert any("re-plan failed" in n["text"] for n in http_json("GET", api + "/notifications?audience=operator")[1]["notifications"])
     notes = http_json("GET", api + "/notifications?audience=cluster")[1]["notifications"]
     assert any(n["type"] == "MAP" and "west_north_gate" in n["text"] for n in notes)
     assert http_json("POST", api + "/escalations", dict(gate, message_id="gate-stale", lease_version=1))[0] == 409

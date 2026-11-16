@@ -34,6 +34,8 @@ class Reaction:
     tokens_out: int = 0
 
 
+RESUME_CHECK_S = 30      # a robot parked because no route exists looks again this often (only acts if something changed)
+
 _BLOCKING = re.compile(r"block|clos|shut|lock|obstruct|crowd|spill|flood|impassab|no (?:way|route|access)|cordon|cannot pass|can't pass", re.I)
 
 
@@ -61,6 +63,8 @@ class Reactor:
     def on_event(self, task: dict, payload: dict) -> Reaction:
         o = self.o
         zones = blocked_zones(o.topo, payload)
+        if payload.get("_resume"):
+            return self._resume(task, payload)
         if payload.get("_retry") and not any(z in o.mapstate.closed(o.clock.now()) for z in zones):
             cur = o.repo.current(task["task_id"])      # a "look again" came due and the way is open again: nothing to do
             return Reaction(rows=[_row("rule", {"zones": zones}, {"decision": "react", "action": "no_action",
@@ -126,6 +130,52 @@ class Reactor:
                                                                        "text": f"re-plan failed: {out.reason}"}, cur["version"]))
                 self._notice(react, Notice("operator", f"{task['task_id']}: re-plan failed ({out.reason}). Operator decision needed.",
                                            task_id=task["task_id"], lease_version=cur["version"]), cur["version"], task)
+                parked = self._park(task, cur, zones, payload, react)
+                if parked is not None:
+                    parked.rows, parked.reason = out.rows + parked.rows, out.reason
+                    react.outcome = parked
+        return react
+
+    def _park(self, task: dict, cur: dict, zones: list, payload: dict, react: Reaction) -> Outcome | None:
+        """No plan avoids the zones that just closed, but the live lease still runs through one of them (FR-5):
+        park the robot under the next lease version (it keeps its claim and its load) and look again later."""
+        o = self.o
+        through = sorted(set(zones) & set(cur["allowed_zones"]))
+        if not through:
+            return None
+        stop = o.stand_down(task, f"no route avoids {', '.join(through)}")
+        if stop.kind != "stood_down":
+            return None
+        self._arm_resume(task, {k: v for k, v in payload.items() if k != "_retry"}, stop.lease["version"])
+        react.rows.append(_row("rule", {"zones": through}, {"decision": "park_until_route", "zones": through,
+                                                           "check_every_s": RESUME_CHECK_S}, stop.lease["version"]))
+        return stop
+
+    def _arm_resume(self, task: dict, payload: dict, version: int) -> None:
+        o = self.o
+        o.waits[task["task_id"]] = {"until": iso(o.clock.now() + timedelta(seconds=RESUME_CHECK_S)),
+                                    "payload": dict(payload, _resume=True, _epoch=o.epoch()), "version": version}
+
+    def _resume(self, task: dict, payload: dict) -> Reaction:
+        """A parked task looks again. Nothing changed (map, fleet, rules): keep waiting, no log row. Otherwise plan
+        the rest of the job from where the robot is parked, as the next lease version; if that still fails, wait."""
+        o = self.o
+        react = Reaction()
+        cur = o.repo.current(task["task_id"])
+        if cur is None or not task.get("spec"):
+            return react
+        if o.epoch() == payload.get("_epoch"):
+            self._arm_resume(task, payload, cur["version"])
+            return react
+        out = o.reassign(task, "re-plan after the map changed", robot_zone=o.fleet.robot_zone(cur["assigned_robots"][0]))
+        if out.kind != "leased":
+            self._arm_resume(task, payload, cur["version"])
+            return react
+        react.outcome = out
+        react.rows.append(_row("rule", {"parked_lease": cur["lease_id"]}, {"decision": "react", "action": "resume_after_park",
+                                                                          "rationale": "a route exists again"}, cur["version"]))
+        self._notice(react, Notice("operator", f"{task['task_id']}: a route exists again; re-planned as lease v{out.lease['version']}.",
+                                   task_id=task["task_id"], lease_version=out.lease["version"]), out.lease["version"], task)
         return react
 
     def _choose_event(self, task, payload, cur, zones, robot_zone, react: Reaction) -> dict:
