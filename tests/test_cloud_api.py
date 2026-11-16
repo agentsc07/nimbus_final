@@ -54,6 +54,36 @@ def test_replan_makes_v2_and_stale_v1_escalation_is_dropped(api):
     assert [r["output"].get("decision") for r in tl["timeline"] if r["who"] == "cloud"][-2:] == ["replan", "issue_lease"]
 
 
+def test_output_ready_for_a_task_with_no_lease_is_refused_and_changes_nothing(api):
+    """Red-team #19: a task still waiting for clarification has no lease, so no escalation can belong to it."""
+    _, body = http_json("POST", api + "/requests", dict(SC1, message_id="msg-19-a"))
+    task_id = body["task_id"]
+    _, before = http_json("GET", api + f"/tasks/{task_id}/timeline")
+    forged = esc(task_id, "OUTPUT_READY", 999, {"result_ref": "storage://results/unverified/proof.jpg"}, "msg-19-o1")
+    status, resp = http_json("POST", api + "/escalations", forged)
+    assert status == 409 and "no lease" in resp["error"]
+    _, task = http_json("GET", api + f"/tasks/{task_id}")
+    assert task["status"] == "needs_clarification" and task["result_ref"] is None and task["lease"] is None
+    _, after = http_json("GET", api + f"/tasks/{task_id}/timeline")
+    assert after["timeline"] == before["timeline"]                     # nothing logged for the refused message
+    for kind, payload in (("UNEXPECTED_EVENT", {"what_happened": "x", "where": "E3", "robots_saw": ["x"]}),
+                          ("CLARIFY", {"question": "which?", "possible_readings": ["a"]})):
+        assert http_json("POST", api + "/escalations", esc(task_id, kind, 1, payload, f"msg-19-{kind}"))[0] == 409
+
+
+def test_escalation_under_a_lease_version_never_issued_is_refused(api):
+    """Red-team #19: only the version the cloud actually issued is accepted (v1 here); v999 does not complete the task."""
+    task_id = sc1_leased(api, "19b")
+    forged = esc(task_id, "OUTPUT_READY", 999, {"result_ref": "s3://x/forged.jpg"}, "msg-19-o2")
+    status, resp = http_json("POST", api + "/escalations", forged)
+    assert status == 409 and resp["current"] == 1 and "never issued" in resp["error"]
+    _, task = http_json("GET", api + f"/tasks/{task_id}")
+    assert task["status"] == "leased" and task["result_ref"] is None
+    real = esc(task_id, "OUTPUT_READY", 1, {"result_ref": "s3://x/real.jpg"}, "msg-19-o3")
+    assert http_json("POST", api + "/escalations", real)[0] == 201
+    assert http_json("GET", api + f"/tasks/{task_id}")[1]["status"] == "completed"
+
+
 def test_replan_with_no_route_is_409_and_keeps_v1(api):
     task_id = sc1_leased(api)
     status, body = http_json("POST", api + f"/tasks/{task_id}/replan",
