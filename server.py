@@ -36,7 +36,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 _STATE_LOCK = threading.RLock()
 _IN_FLIGHT_MESSAGES: dict[str, float] = {}
 _IN_FLIGHT_TIMEOUT = 120.0  # seconds before stuck reservation is evicted
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB maximum request body size
+# Body limits: JSON API bodies <= Handler.MAX_BODY_BYTES (1,000,000 bytes, else 400); result file uploads via
+# PUT /results/upload/* <= cloud.results.MAX_UPLOAD_BYTES (10 MiB, else 413). See docs/security-endpoint-matrix.md.
 
 TERMINAL_STATUSES = ("completed", "cancelled", "rejected")
 
@@ -238,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
         # G: one API Gateway request; D: response bytes crossing the wire.
         self.cost.record(apigw_requests=1, data_transfer_bytes=len(data))
 
-    MAX_BODY_BYTES = 1_000_000
+    MAX_BODY_BYTES = 1_000_000   # JSON bodies only; lease/escalation/check-in messages are under 2 KB (PRD sec. 5)
 
     def _read_json(self) -> dict:
         try:
@@ -299,7 +300,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return True
 
-        # Public endpoints that do not require auth
+        # Public endpoints that do not require auth. Task data is never public (red-team #14): GET /tasks/{id} needs a
+        # requester or operator token, and /map.json (every task, lease and notice) needs an operator token.
+        # docs/security-endpoint-matrix.md lists the accepted tokens per route; tests/test_p4_issues_14_15_16.py
+        # checks the server against it.
         if method == "GET":
             if path in (
                 "/",
@@ -308,12 +312,11 @@ class Handler(BaseHTTPRequestHandler):
                 "/operator.js",
                 "/map",
                 "/map.html",
-                "/map.json",
                 "/pack",
                 "/ui-config",
                 "/health",
                 "/favicon.ico",
-            ) or path.startswith("/schemas/") or (path.startswith("/tasks/") and len(path.split("/")) == 3):
+            ) or path.startswith("/schemas/"):
                 return True
 
         # Extract token from Authorization header or X-Nimbus-Token
@@ -326,12 +329,14 @@ class Handler(BaseHTTPRequestHandler):
 
         # Determine required role
         role = "operator"
-        if path in ("/checkins", "/escalations", "/fleet/heartbeat", "/relay/decide", "/outbox"):
+        if path in EDGE_PATHS:   # incl. /results/upload-url; do_PUT authorises PUT /results/upload/* as that path
             role = "edge"
         elif path in ("/fault", "/llm/outage"):
             role = "admin"
         elif path == "/requests" or (path.startswith("/requests/") and path.endswith("/answer")):
             role = "requester"
+        elif method == "GET" and path.startswith("/tasks/") and len(path.split("/")) == 3:
+            role = "requester"   # one task's status for its requester (or the operator); /timeline, /trace stay operator
         elif path.startswith("/tasks/") and (path.endswith("/control") or path.endswith("/replan")):
             role = "operator"
         elif path in ("/map/reopen", "/inventory/stock", "/fleet/stock", "/inventory/reset", "/reset-memory", "/memory/reset"):
@@ -403,11 +408,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._is_authorized(path, self.command)
 
 
+    def _send_health(self, include_body: bool) -> None:
+        """Liveness for the ALB target group (infra/terraform/main.tf health_check), the Docker HEALTHCHECK and
+        readiness probes (red-team #15). Public and cheap: no state is read and probes are not metered as API calls."""
+        data = json.dumps({"status": "ok"}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if include_body:
+            self.wfile.write(data)
+
+    def do_HEAD(self):
+        if urlparse(self.path).path == "/health":
+            self._send_health(include_body=False)
+        else:
+            self.send_error(501, "Unsupported method ('HEAD')")   # unchanged for every other path
+
     def do_GET(self):
         path = urlparse(self.path).path
         if not self._is_authorized(path, "GET"):
             return
-        if path == "/":
+        if path == "/health":
+            self._send_health(include_body=True)
+        elif path == "/":
             self._send_static("index.html")
         elif path == "/app.js":
             self._send_static("app.js")
