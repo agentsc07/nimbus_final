@@ -81,9 +81,9 @@ def test_both_gates_closed_gives_a_reason_and_alerts_the_operator_instead_of_loo
     orch.fleet.heartbeat("east-wing", {"robots": [{"id": first.lease["assigned_robots"][0], "state": "busy", "zone": "E4"}]})
     orch.mapstate.report("W1" if first.legs[0]["destination"] == "W0" else "W0", "closed", "edge", orch.clock.now())
     r = orch.react.on_event(t, event(first.legs[0]["destination"]))
-    assert r.outcome.kind == "replan_failed" and r.outcome.reason
+    assert r.outcome.kind == "stood_down" and r.outcome.reason     # parked, not left on a lease through the gate (#13)
     assert any(x["output"].get("decision") == "alert_operator" for x in r.rows)
-    assert orch.repo.current(t["task_id"])["version"] == 1
+    assert orch.repo.current(t["task_id"])["version"] == 2 and r.outcome.lease["task_sequence"] == [{"cmd": "stop", "params": {}}]
 
 
 def test_robot_position_unknown_cannot_be_reassigned():
