@@ -190,3 +190,40 @@ def test_restock_rejects_bad_input(api):
     assert http_json("POST", api + "/fleet/stock", {"cluster_id": "east-wing", "stock": {"wheelchair": 1.5}})[0] == 400
     assert http_json("POST", api + "/fleet/stock", {"cluster_id": "east-wing", "stock": {"unicorn": 1}})[0] == 400
     assert http_json("POST", api + "/fleet/stock", {"cluster_id": "east-wing"})[0] == 400
+
+
+import pytest  # noqa: E402
+
+BAD_DIGESTS = [
+    {"robots": "nope"}, {"robots": 123}, {"robots": ["x", "y"]},                      # the three in red-team #23
+    {"stock": ["x"]}, {"stock": "x"},
+    {"robots": [{"id": ["R1"]}]}, {"robots": [{"id": "robot_1", "zone": ["a"]}]}, {"robots": [{"id": "robot_1", "battery": "full"}]},
+    {"leases": [1, "x"]}, {"leases": [{"lease_id": 5}]}, {"leases": [{"lease_id": "lease-t-v1", "version": "1"}]},
+]
+
+
+@pytest.mark.parametrize("bad", BAD_DIGESTS)
+def test_malformed_heartbeat_gets_a_clean_400_and_does_not_count_as_a_sign_of_life(api, bad):
+    """Red-team #23: a malformed digest used to crash the request (no HTTP response). Now: 400, and nothing changes."""
+    _, before = http_json("GET", api + "/fleet")
+    status, body = http_json("POST", api + "/fleet/heartbeat", {"cluster_id": "east-wing", **bad})
+    assert status == 400 and "must be" in body["error"]
+    _, after = http_json("GET", api + "/fleet")
+    east = lambda f: next(c for c in f["fleet"] if c["cluster_id"] == "east-wing")   # noqa: E731
+    assert east(after)["last_seen"] == east(before)["last_seen"] and east(after)["robots"] == east(before)["robots"]
+
+
+@pytest.mark.parametrize("bad", BAD_DIGESTS[:8] + [{"lease_id": 7}, {"lease_version": "1"}, {"cluster_id": ["east-wing"]}])
+def test_malformed_checkin_gets_a_clean_400(api, bad):
+    task_id = sc1_leased(api, "23")
+    good = {"cluster_id": "east-wing", "lease_id": f"lease-{task_id}-v1", "lease_version": 1,
+            "timestamp": "2026-11-17T09:00:00Z", "message_id": "msg-23-ci"}
+    status, body = http_json("POST", api + "/checkins", {**good, **bad})
+    assert status == 400 and "must be" in body["error"]
+
+
+def test_a_well_formed_heartbeat_digest_is_still_accepted(api):
+    status, body = http_json("POST", api + "/fleet/heartbeat", {
+        "cluster_id": "east-wing", "stock": {"infusion_pump": 3},
+        "robots": [{"id": "R1", "state": "idle", "zone": "E1", "battery": 87.5, "pos": [1.0, 2.0]}]})
+    assert status == 201 and body["accepted"] is True
