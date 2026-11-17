@@ -978,6 +978,10 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(cluster_id, str) or not cluster_id:
             self._send_json(400, {"error": "cluster_id is required"})
             return
+        bad = _digest_error(body)
+        if bad:
+            self._send_json(400, {"error": bad})
+            return
         allow_unknown = os.environ.get("NIMBUS_ALLOW_UNKNOWN", "0").lower() in ("1", "true", "yes")
         with _STATE_LOCK:
             known = self.orch.fleet.heartbeat(cluster_id, {k: body[k] for k in ("robots", "stock") if k in body})
@@ -1557,6 +1561,35 @@ def process_escalation(
     return 201, reply
 
 
+def _digest_error(body: dict) -> str | None:
+    """Shape check for the optional digest an edge sends with a heartbeat or check-in (robots[], stock{}, leases[]).
+    Returns an error message, or None when the digest is well formed. Runs before any state is touched (red-team #23)."""
+    if "robots" in body:
+        robots = body["robots"]
+        if not isinstance(robots, list) or not all(isinstance(r, dict) for r in robots):
+            return "robots must be a list of objects"
+        for r in robots:
+            for key in ("id", "state", "zone"):
+                if key in r and r[key] is not None and not isinstance(r[key], str):
+                    return f"robots[].{key} must be a string"
+            if "battery" in r and r["battery"] is not None and (isinstance(r["battery"], bool)
+                                                                or not isinstance(r["battery"], (int, float))):
+                return "robots[].battery must be a number"
+    if "stock" in body and not isinstance(body["stock"], dict):
+        return "stock must be an object of item -> count"
+    if "leases" in body:
+        leases = body["leases"]
+        if not isinstance(leases, list) or not all(isinstance(h, dict) for h in leases):
+            return "leases must be a list of objects"
+        for h in leases:
+            if "lease_id" in h and not isinstance(h["lease_id"], str):
+                return "leases[].lease_id must be a string"
+            if "version" in h and h["version"] is not None and (isinstance(h["version"], bool)
+                                                                 or not isinstance(h["version"], int)):
+                return "leases[].version must be an integer"
+    return None
+
+
 def process_checkin(
     store: Store,
     orch: Orchestrator,
@@ -1577,6 +1610,14 @@ def process_checkin(
         ]
         if missing:
             return 400, {"error": f"check-in missing {missing}"}
+        for key in ("cluster_id", "lease_id", "timestamp"):
+            if not isinstance(body[key], str) or not body[key]:
+                return 400, {"error": f"{key} must be a non-empty string"}
+        if isinstance(body["lease_version"], bool) or not isinstance(body["lease_version"], int):
+            return 400, {"error": "lease_version must be an integer"}
+        bad = _digest_error(body)
+        if bad:
+            return 400, {"error": bad}
 
         match = re.fullmatch(r"lease-(.+)-v\d+", body["lease_id"])
         if not match:
