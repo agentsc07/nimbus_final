@@ -11,13 +11,29 @@ variable "project_name" {
 }
 
 variable "app_image" {
-  description = "Container image for the Fargate service. Empty (the default) uses the ECR repository this configuration creates, tag `latest`; push it with scripts/build_push.sh."
+  description = "Optional full image reference for the Fargate service, pinned by digest: `<repository>@sha256:<64 hex>`. Empty (the default) deploys app_image_tag from the ECR repository this configuration creates."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.app_image == "" || can(regex("@sha256:[0-9a-f]{64}$", var.app_image))
+    error_message = "app_image must be pinned by digest (<repository>@sha256:<64 hex>), not a tag such as :latest (issue #20)."
+  }
+}
+
+variable "app_image_tag" {
+  description = "Tag in the nimbus-app ECR repository to deploy, as printed by scripts/build_push.sh (the git commit by default). Terraform resolves it to the image digest, so the task definition pins that exact image."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.app_image_tag != "latest"
+    error_message = "Do not deploy the moving `latest` tag; push a commit tag with scripts/build_push.sh (issue #20)."
+  }
 }
 
 variable "egress_mode" {
-  description = "How the Fargate task reaches the internet (image pull, Bedrock): public_ip (cheapest) or none (supply VPC endpoints yourself)."
+  description = "How the Fargate task reaches the internet (image pull, Bedrock): public_ip (cheapest) or none (supply interface VPC endpoints for ECR, Bedrock, SQS, Logs, Secrets Manager and IoT yourself; the S3 and DynamoDB gateway endpoints are always created)."
   type        = string
   default     = "public_ip"
 
