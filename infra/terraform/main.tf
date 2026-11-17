@@ -39,8 +39,8 @@ locals {
 
 # ---------------------------------------------------------------------------
 # Network placeholder: one VPC, two private subnets for the Fargate service.
-# Person 3: add NAT gateways / VPC endpoints (Bedrock, S3, DynamoDB) when the
-# real deployment is sized.
+# Internet egress and the S3/DynamoDB gateway endpoints are in cloud.tf; interface
+# endpoints (Bedrock, ECR, ...) are left out for cost, see the app security group.
 # ---------------------------------------------------------------------------
 
 resource "aws_vpc" "main" {
@@ -132,6 +132,13 @@ resource "aws_ecs_task_definition" "app" {
       }
     }
   ])
+
+  lifecycle {
+    precondition {
+      condition     = local.app_image != ""
+      error_message = "No service image chosen. Push one with scripts/build_push.sh, then pass -var app_image_tag=<the tag it printed> (or -var app_image=<repository>@sha256:<digest>)."
+    }
+  }
 }
 
 resource "aws_security_group" "vpc_link" {
@@ -188,11 +195,24 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  # Outbound is HTTPS only (#20). Everything the container calls is an AWS API over HTTPS: the image
+  # pull (ECR, layers from S3), DynamoDB, Bedrock, S3, SQS, IoT data, Secrets Manager and CloudWatch
+  # Logs (the boto3 clients in cloud/). The task definition leaves NIMBUS_TRANSPORT unset, so MQTT on
+  # 8883 is not used here. DNS and the task metadata endpoint are link-local and not filtered by
+  # security groups.
+  #
+  # The destination stays 0.0.0.0/0 because those regional AWS endpoints have no fixed address list a
+  # security group can name (S3 and DynamoDB already go through the gateway endpoints in cloud.tf).
+  # Closing it fully needs an interface endpoint per service (ECR api and dkr, Bedrock runtime and
+  # agent runtime, SQS, Secrets Manager, Logs, IoT data: 8 endpoints at roughly $8/month each per AZ),
+  # over the $50/month budget (var.budget_usd). Accepted residual risk, documented in
+  # docs/aws-integration-audit.md section 8.
   egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTPS to AWS service endpoints only"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    #trivy:ignore:AVD-AWS-0104
     cidr_blocks = ["0.0.0.0/0"]
   }
 

@@ -62,6 +62,29 @@ resource "aws_route_table_association" "egress_b" {
   route_table_id = aws_route_table.egress[0].id
 }
 
+# S3 and DynamoDB (every table call, task results, and the image layers ECR serves from S3) go
+# through gateway endpoints, which cost nothing, so that traffic stays on the AWS network instead
+# of the internet gateway (#20). Without "public_ip" the subnets use the VPC's main route table.
+locals {
+  task_route_table_ids = var.egress_mode == "public_ip" ? [aws_route_table.egress[0].id] : [aws_vpc.main.main_route_table_id]
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = local.task_route_table_ids
+  tags              = { Name = "${local.name_prefix}-s3-endpoint" }
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = local.task_route_table_ids
+  tags              = { Name = "${local.name_prefix}-dynamodb-endpoint" }
+}
+
 # ---------------------------------------------------------------------------
 # Permissions the decision plane needs beyond P4's baseline policy.
 # - state table (conditional writes and transactions use Put/Update/Delete)
@@ -212,11 +235,15 @@ resource "aws_budgets_budget" "monthly" {
 # built and pushed by scripts/build_push.sh. First deploy: apply just the repository
 # (`terraform apply -target=aws_ecr_repository.app`), push the image, then apply the rest,
 # otherwise the ECS service starts before there is an image to pull.
+#
+# What ECS runs is pinned (#20): tags are immutable, so a pushed tag can never point at
+# other contents later, and the task definition names the image by digest, not by tag.
+# Deploy with `-var app_image_tag=<the tag build_push.sh printed>`; there is no `latest`.
 # ---------------------------------------------------------------------------
 
 resource "aws_ecr_repository" "app" {
   name                 = "nimbus-app"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = true
 
   image_scanning_configuration {
@@ -236,8 +263,18 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
+# var.app_image_tag resolved to its digest at plan time. Not read when var.app_image already
+# names a digest, or when no tag is given (the task definition's precondition then stops the plan).
+data "aws_ecr_image" "app" {
+  count           = var.app_image == "" && var.app_image_tag != "" ? 1 : 0
+  repository_name = aws_ecr_repository.app.name
+  image_tag       = var.app_image_tag
+}
+
 locals {
-  app_image = var.app_image != "" ? var.app_image : "${aws_ecr_repository.app.repository_url}:latest"
+  app_image = var.app_image != "" ? var.app_image : (
+    length(data.aws_ecr_image.app) == 1 ? "${aws_ecr_repository.app.repository_url}@${data.aws_ecr_image.app[0].image_digest}" : ""
+  )
 }
 
 output "ecr_repository_url" {

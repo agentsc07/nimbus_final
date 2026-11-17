@@ -75,3 +75,13 @@
   - `MemoryUtilization > 85%` for 2 consecutive periods of 60 seconds.
 - **Application Health Metric**: Heartbeat misses are detected via `missed_checkin` alarm. Metric namespace matches `Nimbus/Fleet` and dimension `ClusterId` emitted by `cloud/orchestrator.py`. Duplicate skeleton alarm was removed (**C3**).
 - **Public Ingress & Security Group (C2)**: Ingress to port 8000 is restricted to `var.allowed_ingress_cidr_blocks` (`["10.20.0.0/16"]`), and `assign_public_ip` is set to `false` by default, eliminating direct Internet exposure.
+
+---
+
+## 8. Image Pinning and Container Egress (red-team issue #20, NFR-5)
+
+- **Image pinned by digest**: the `nimbus-app` ECR repository uses `IMMUTABLE` tags, so a pushed tag can never be re-pushed with other contents. `scripts/build_push.sh` tags each build with the git commit (plus a timestamp for a dirty tree) and refuses `latest`. Terraform resolves `var.app_image_tag` to its digest (`data.aws_ecr_image.app`) and the task definition runs `<repository>@sha256:<digest>`. A manual `var.app_image` must also be a digest reference; a plan with no image stops with a precondition error instead of deploying `:latest`. The ECR lifecycle policy keeps the 10 newest images, so re-apply after pushing; a running digest left behind by more than 10 newer pushes would be expired and the task could not restart.
+- **Egress**: the app security group allows outbound TCP 443 only (was: every protocol and port). Every call the container makes is an AWS API over HTTPS (ECR pull, DynamoDB, Bedrock, S3, SQS, IoT data, Secrets Manager, CloudWatch Logs); `NIMBUS_TRANSPORT` is unset in the task definition, so MQTT on 8883 is not used in the cloud.
+- **Gateway endpoints**: S3 and DynamoDB traffic, including ECR image layers, goes through free gateway VPC endpoints instead of the internet gateway.
+- **Accepted residual risk**: the 443 rule still targets `0.0.0.0/0`, because the regional Bedrock, ECR, SQS, Secrets Manager, Logs and IoT endpoints have no fixed address list a security group can name. Removing it needs about 8 interface VPC endpoints (roughly $8/month each per AZ), more than the $50/month project budget. The exception is marked inline for Trivy (`#trivy:ignore:AVD-AWS-0104`) next to the rule in `infra/terraform/main.tf`, with this reasoning.
+- **Regression tests**: `tests/test_p4_issue_20.py`.

@@ -402,17 +402,21 @@ terraform apply -target=aws_ecr_repository.app -target=aws_secretsmanager_secret
 aws secretsmanager put-secret-value --region ap-south-1 --secret-id nimbus-ds252-app-secrets --secret-string '{"NIMBUS_REQUESTER_TOKEN":"<random>","NIMBUS_OPERATOR_TOKEN":"<random>","NIMBUS_EDGE_TOKEN":"<random>","NIMBUS_ADMIN_TOKEN":"<random>"}'
 ```
 
-4. Build and push the cloud image (from the repository root):
+4. Build and push the cloud image (from the repository root). It is tagged with the current commit (ECR tags are
+   immutable, `latest` is refused) and the script prints the tag:
 
 ```bash
 cd ../.. && AWS_REGION=ap-south-1 ./scripts/build_push.sh
 ```
 
-5. Create everything else, optionally with a budget alert address:
+5. Create everything else with the tag from step 4, optionally with a budget alert address. Terraform resolves the
+   tag to the image digest, so the service runs exactly that image:
 
 ```bash
-cd infra/terraform && terraform apply -var alert_email=you@example.com
+cd infra/terraform && terraform apply -var app_image_tag=<tag from step 4> -var alert_email=you@example.com
 ```
+
+   To deploy a new build later, push again (a new commit gives a new tag) and re-apply with the new tag.
 
 6. Read the API address and connect edges to it with the edge token:
 
