@@ -84,7 +84,8 @@ resource "aws_ecs_cluster" "main" {
 
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${local.name_prefix}"
-  retention_in_days = 30
+  retention_in_days = 365                  # a year of app logs (#25)
+  kms_key_id        = aws_kms_key.data.arn # data_protection.tf
 }
 
 resource "aws_ecs_task_definition" "app" {
@@ -312,6 +313,25 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  # One line per request into the encrypted log group in data_protection.tf (#25). No headers or bodies,
+  # so no tokens or request text are logged.
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      sourceIp          = "$context.identity.sourceIp"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      routeKey          = "$context.routeKey"
+      path              = "$context.path"
+      status            = "$context.status"
+      protocol          = "$context.protocol"
+      responseLength    = "$context.responseLength"
+      integrationStatus = "$context.integrationStatus"
+      responseLatency   = "$context.responseLatency"
+    })
+  }
 }
 
 resource "aws_apigatewayv2_route" "default" {
@@ -345,6 +365,7 @@ resource "aws_apigatewayv2_route" "root" {
 resource "aws_sqs_queue" "escalations" {
   name                       = "${local.name_prefix}-escalations"
   visibility_timeout_seconds = 30
+  sqs_managed_sse_enabled    = true # SSE-SQS (#25); works with the EventBridge target, which a KMS-encrypted queue would need a key grant for
 }
 
 resource "aws_cloudwatch_event_bus" "main" {
@@ -378,6 +399,15 @@ resource "aws_dynamodb_table" "leases" {
     name = "lease_id"
     type = "S"
   }
+
+  point_in_time_recovery {
+    enabled = true # the audit trail and task state can be restored to any second of the last 35 days (#25)
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.data.arn
+  }
 }
 
 resource "aws_dynamodb_table" "tasks" {
@@ -389,6 +419,15 @@ resource "aws_dynamodb_table" "tasks" {
     name = "task_id"
     type = "S"
   }
+
+  point_in_time_recovery {
+    enabled = true # the audit trail and task state can be restored to any second of the last 35 days (#25)
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.data.arn
+  }
 }
 
 resource "aws_dynamodb_table" "robot_status" {
@@ -399,6 +438,15 @@ resource "aws_dynamodb_table" "robot_status" {
   attribute {
     name = "robot_id"
     type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true # the audit trail and task state can be restored to any second of the last 35 days (#25)
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.data.arn
   }
 }
 
@@ -415,6 +463,15 @@ resource "aws_dynamodb_table" "decision_log" {
   attribute {
     name = "ts"
     type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true # the audit trail and task state can be restored to any second of the last 35 days (#25)
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.data.arn
   }
 }
 

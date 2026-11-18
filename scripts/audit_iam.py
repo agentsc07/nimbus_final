@@ -25,6 +25,13 @@ ROOT = Path(__file__).resolve().parents[1]
 JUSTIFIED = {
     ("p3-dev-policy.json", "bedrock:InvokeModel"): "Bedrock invocation resources are foundation-model and inference-profile ARNs that differ per region",
     ("p3-dev-policy.json", "DynamoDbListTables"): "dynamodb:ListTables does not support resource-level permissions in IAM",
+    # KMS key policy of aws_kms_key.data (#25). In a key policy, Resource "*" means the key the policy is attached
+    # to, nothing else; the access limits are in the principals and conditions.
+    ("data_protection.tf", "kms:*"): "AWS default key-policy statement for the account root, so IAM policies can manage the key",
+    ("data_protection.tf", "EnableIamPolicies"): "key policy: Resource * is this key only; principal is the account root",
+    ("data_protection.tf", "UseThroughDynamoDbAndS3"): "key policy: Resource * is this key only; this account's callers, via DynamoDB or S3 only",
+    ("data_protection.tf", "CloudWatchLogs"): "key policy: Resource * is this key only; CloudWatch Logs, for this account's log groups only",
+    ("data_protection.tf", "CloudFrontStaticApp"): "key policy: Resource * is this key only; CloudFront, for the static-app distribution only",
 }
 SECRET_PATTERNS = {
     "AWS access key id": re.compile(r"\b(AKIA|ASIA)[0-9A-Z]{16}\b"),
