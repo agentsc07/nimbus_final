@@ -451,8 +451,9 @@ python -m pytest -q
 python -m pytest -q edge/tests
 ```
 
-On this commit 18 tests fail, all from the latest map and topology changes (ward 3 is unreachable in the robot map);
-see [dev.md](dev.md#known-issues). Everything else passes.
+Ward 3 is retained geographically in the Gazebo map but is intentionally unsupported as a delivery destination: its
+old approach crossed a physical wall. Explicit Ward 3 requests are rejected as permanently unreachable; they are never
+redirected to another ward. See [dev.md](dev.md#known-issues) for the pack-maintenance note.
 
 ### 6.9 Reproduce the results
 

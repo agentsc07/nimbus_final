@@ -51,7 +51,8 @@ class Topology:
     # -- facts ------------------------------------------------------------------
 
     def destinations(self) -> dict[str, dict]:
-        return {n: d for n, d in self.nodes.items() if d["kind"] in self.destination_kinds}
+        return {n: d for n, d in self.nodes.items()
+                if d["kind"] in self.destination_kinds and d.get("delivery_supported", True)}
 
     def exclusive_zones(self) -> set[str]:
         return {n for n, d in self.nodes.items() if d.get("exclusive")}
@@ -96,7 +97,8 @@ class Topology:
         """A place an item may be taken to: the pack's destination kinds, and
         the source kinds too (returning an item to where stock is kept)."""
         a = self.anchor_of(zone)
-        return bool(a) and self.nodes[a]["kind"] in (self.destination_kinds | self.source_kinds)
+        return bool(a) and self.nodes[a]["kind"] in (self.destination_kinds | self.source_kinds) \
+            and self.nodes[a].get("delivery_supported", True)
 
     def sources(self) -> dict[str, dict]:
         return {n: d for n, d in self.nodes.items() if d["kind"] in self.source_kinds}

@@ -6,7 +6,7 @@
   "nouns": {
     "item": "equipment",
     "destination": "ward or bed",
-    "example": "wheelchair to ward 3"
+  "example": "wheelchair to 2B"
   },
   "ontology": {
     "destination_kinds": [
@@ -179,7 +179,7 @@
     "missing_destination": {
       "text": "Which {destination_noun} should it go to?",
       "readings": [
-        "name a ward or bed, e.g. 2B-12 or ward 3"
+    "name a ward or bed, e.g. 2B-12 or 2C"
       ]
     },
     "missing_both": {

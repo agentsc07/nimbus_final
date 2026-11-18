@@ -36,6 +36,7 @@
       "kind": "ward",
       "area": "shared",
       "label": "ward 3",
+      "delivery_supported": false,
       "aliases": [
         "ward-3",
         "3"

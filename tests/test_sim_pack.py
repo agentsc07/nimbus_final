@@ -34,6 +34,14 @@ def test_committed_topology_matches_a_rebuild_from_p1s_files():
     assert builder.render(builder.build()) == (ROOT / "packs" / "hospital_sim" / "topology.json").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("pack", ["hospital_sim", "hospital_sim6", "hospital_sim6_t2", "hospital_sim6_t5"])
+def test_all_gazebo_pack_topologies_keep_ward_3_disconnected(pack):
+    overlay, output = builder.pack_paths(pack)
+    built = builder.build(overlay)
+    assert builder.render(built) == output.read_text(encoding="utf-8")
+    assert all("south_room_approach" not in edge for edge in built["edges"])
+
+
 def test_the_builder_keeps_p1s_speed_caps_and_edge_weights():
     p1 = json.loads((P1 / "hospital_topology.json").read_text())
     built = json.loads((ROOT / "packs" / "hospital_sim" / "topology.json").read_text())
@@ -87,7 +95,16 @@ def test_unknown_places_and_out_of_range_beds_are_not_guessed():
 def test_the_prompt_context_names_each_node_with_its_label():
     ctx = make_orch(pack=SIM).build_context("a pump to 2B", "task-000001", []).to_prompt()
     assert "east_waiting_approach = ward 2B (area east, PAEDIATRIC, beds 1-20)" in ctx
-    assert "south_room_approach = ward 3 (area shared, beds 1-30)" in ctx
+    assert "south_room_approach = ward 3 (area shared, beds 1-30)" not in ctx
+
+
+@pytest.mark.parametrize("mode", ["C1", "C2", "C3"])
+def test_disconnected_ward_3_is_not_advertised_and_is_permanently_rejected(mode):
+    orch = make_orch(pack=SIM, mode=mode)
+    assert "ward 3" not in orch.build_context("a pump to 2B", "task-000001", []).to_prompt().lower()
+    out = orch.handle_request(new_task(), "Deliver a wheelchair to ward 3, routine.")
+    assert out.kind == "rejected"
+    assert "permanently unreachable in the topology" in out.reason
 
 
 # -- a store shared by both clusters -----------------------------------------------------------------

@@ -121,7 +121,7 @@ def bad_alloc(cluster, robots):
     return override
 
 
-SIM = Pack.load("hospital_sim")     # ward 3 is a shared place there: two clusters can take it, so the model really chooses
+SIM = Pack.load("hospital_sim")     # the shared equipment store keeps both clusters eligible for allocator tests
 
 
 @pytest.mark.parametrize("cluster,robots,rule", [
@@ -131,7 +131,7 @@ SIM = Pack.load("hospital_sim")     # ward 3 is a shared place there: two cluste
 ])
 def test_vetoed_llm_proposal_is_replaced_by_the_classical_allocator(cluster, robots, rule):
     orch = make_orch(override=bad_alloc(cluster, robots), pack=SIM)
-    out = orch.handle_request(new_task(), "Deliver a wheelchair to ward 3, routine.")
+    out = orch.handle_request(new_task(), "Deliver a wheelchair to equipment store, routine.")
     assert out.kind == "leased" and out.lease["cluster_id"] == "east-wing"
     out_attempts = out.rows[0]["output"]["attempts"]
     assert out_attempts[0]["source"] == "llm" and not out_attempts[0]["ok"]
@@ -149,7 +149,7 @@ def test_llm_gets_one_retry_with_the_checkers_feedback():
             if len(seen) == 1:
                 return tool("propose_allocation", cluster_id="east-wing", robot_ids=["robot_2"], rationale="guess")
 
-    out = make_orch(override=override, pack=SIM).handle_request(new_task(), "wheelchair to ward 3")
+    out = make_orch(override=override, pack=SIM).handle_request(new_task(), "wheelchair to equipment store")
     assert "rejected" in seen[1] and "robots" in seen[1]
     assert out.rows[0]["output"]["proposed_by"] == "llm"  # the corrected proposal passed
 

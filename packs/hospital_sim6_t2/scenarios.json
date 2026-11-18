@@ -61,19 +61,19 @@
  },
  {
   "id": "T1",
-  "title": "Routine delivery, clear corridors",
+  "title": "Routine delivery to Ward 2B-12, clear corridors",
   "turns": [
    {
-    "say": "Deliver a wheelchair to ward 3, routine.",
+    "say": "Deliver a wheelchair to 2B-12, routine.",
     "expect": {
      "kind": "leased",
      "lease_priority": "routine",
      "deadline_minutes": 60,
      "first_goto": "south_equipment_approach",
-     "last_goto": "south_room_approach",
+     "last_goto": "east_waiting_approach",
      "zones_include": [
       "south_equipment_approach",
-      "south_room_approach"
+      "east_waiting_approach"
      ]
     }
    }

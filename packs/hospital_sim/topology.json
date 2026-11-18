@@ -200,6 +200,7 @@
       ],
       "area": "shared",
       "beds": 30,
+      "delivery_supported": false,
       "kind": "ward",
       "label": "ward 3",
       "pos": [
