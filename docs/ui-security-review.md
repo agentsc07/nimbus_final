@@ -35,11 +35,11 @@ All dynamic strings arriving from network APIs or user text input boxes are trea
    - `<td><span class="badge ${badgeClass}">${esc(t.status)}</span></td>`
    - `<span>${esc(clusterId)}: ${esc(count)}</span>`
 3. **Restricted Content Security Policy (CSP)**:
-   Added a strict CSP meta header to both `static/index.html` and `static/operator.html`:
-   ```html
-   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self';">
-   ```
-   This prevents external malicious script injection, untrusted network exfiltration, and unauthorized inline frames.
+   `server.py` sets the policy as a response header on every response (red-team issue #27; the earlier `<meta>`
+   tags in `static/index.html` and `static/operator.html` were looser than described here and have been removed).
+   Pages allow scripts only from this origin, the pinned Three.js CDN and the SHA-256 hashes of their own inline
+   scripts (no `'unsafe-inline'` for scripts), connections only to this origin, and no framing; inline styles stay
+   allowed. Non-page responses allow nothing. See `page_csp` and `Handler.end_headers` in `server.py`.
 4. **Regression Verification**:
    Payloads such as `<img src=x onerror=alert(1)>` and `<script>alert('pwned')</script>` submitted via `POST /requests` are safely escaped into `&lt;img src=x onerror=alert(1)&gt;` and rendered as inert text in both requester and operator tables without executing JavaScript.
 

@@ -10,7 +10,7 @@
 
 | Finding ID | Finding Title | Owning Team | Severity | P4 Integration Status | Remaining Dependency |
 | :--- | :--- | :---: | :---: | :--- | :--- |
-| **HO-P1-01** | Web Viewer Unescaped HTML Rendering (XSS Risk) | **P1** | High | P4 hardened server headers (`Content-Security-Policy`) | P1 sanitize viewer template variables |
+| **HO-P1-01** | Web Viewer Unescaped HTML Rendering (XSS Risk) | **P1** | High | P4 server-set `Content-Security-Policy` header on every response (#27) | P1 sanitize viewer template variables |
 | **HO-P1-02** | Robot Identity Naming Inconsistency across Sim | **P1** | Medium | Contracts schema validates canonical `R[1-9]` ids | P1 map Gazebo robot model names to canonical ids |
 | **HO-P1-03** | Safe Parking Waypoint Geofence Discrepancy | **P1** | High | P4 allocator checks geofences and returns stop leases | P1 move standby bay waypoints outside corridors |
 | **HO-P1-04** | Gazebo Mesh vs Kinematic 2D World Coordinate Drift | **P1** | Medium | Mapview endpoint normalizes coordinates within bounds | P1 align world frame transforms in SDF mesh |
@@ -42,7 +42,7 @@
 - **Evidence:** User-supplied task parameters (e.g. requester name, item labels) are interpolated directly into DOM elements without sanitization, exposing the web console to script injection.
 - **Reproduction:** Submit request with text `Bed 2C <script>alert(1)</script>`. Inspect viewer DOM; raw `<script>` tag is rendered.
 - **Required Fix:** Use `textContent` instead of `innerHTML`, or pass all variables through standard HTML escaping.
-- **P4 Integration Completed:** Hardened HTTP response headers in `server.py` with `Content-Security-Policy: default-src 'self'`.
+- **P4 Integration Completed (corrected for red-team issue #27):** until #27 this line claimed a `server.py` header that did not exist; the only CSP was a `<meta>` tag allowing `'unsafe-inline'` scripts and `connect-src *`. `server.py` now sets `Content-Security-Policy` and `X-Content-Type-Options: nosniff` on every response (`Handler.end_headers`). Pages (`/`, `/operator`, `/map`) get `default-src 'self'`, scripts only from `'self'`, `https://cdn.jsdelivr.net` (pinned Three.js) and the SHA-256 hashes of each page's own inline scripts (no `'unsafe-inline'` for scripts), `connect-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`; inline styles stay allowed. Every other response (JSON, JS, errors) gets `default-src 'none'; frame-ancestors 'none'; base-uri 'none'`. The `<meta>` tags were removed so there is one policy. Regression tests: `tests/test_p4_issue_27.py`.
 - **Remaining Dependency:** P1 to replace direct HTML string concatenations in simulation viewer templates.
 - **Acceptance Criterion:** Submitting payload with HTML tags renders literal text without script execution.
 

@@ -8,6 +8,8 @@ touching these routes. Endpoints are the public seam; see SPEC-P4.md.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -213,6 +215,27 @@ def apply_outcome(orch, store, cost, publish, task: dict, outcome) -> None:
 
 EDGE_PATHS = ("/checkins", "/escalations", "/fleet/heartbeat", "/outbox", "/relay/decide", "/results/upload-url")
 
+# Content-Security-Policy set by the server on every response (NFR-5, red-team issue #27); the pages carry no <meta>
+# policy of their own. A page may run scripts only from this origin, the pinned Three.js CDN and the SHA-256 hashes
+# of its own inline scripts (computed from the file served, so editing a script cannot silently break the page),
+# and may only call this origin. Inline styles stay allowed: the pages use style attributes, and style injection is
+# far less dangerous than script. Everything that is not a page (JSON, JS files, errors) is allowed nothing.
+API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+PAGE_CSP = ("default-src 'self'; script-src 'self' https://cdn.jsdelivr.net{hashes}; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+            "connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; "
+            "frame-ancestors 'none'")
+_INLINE_SCRIPT = re.compile(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", re.S | re.I)
+
+
+def page_csp(html: str) -> str:
+    """The policy for one page: PAGE_CSP plus a hash for each inline script (an importmap counts). Browsers hash
+    the script after HTML newline normalisation, so CRLF and CR (a Windows checkout) are hashed as LF."""
+    html = html.replace("\r\n", "\n").replace("\r", "\n")
+    hashes = "".join(f" 'sha256-{base64.b64encode(hashlib.sha256(body.encode('utf-8')).digest()).decode()}'"
+                     for body in _INLINE_SCRIPT.findall(html))
+    return PAGE_CSP.format(hashes=hashes)
+
 
 class Handler(BaseHTTPRequestHandler):
     store: Store  # injected per server instance
@@ -228,6 +251,12 @@ class Handler(BaseHTTPRequestHandler):
             self.store.append_outbox({"topic": topic, "payload": payload})
 
     # -- helpers ---------------------------------------------------------
+
+    def end_headers(self) -> None:
+        """Security headers on every response, including errors and HEAD (#27)."""
+        self.send_header("Content-Security-Policy", self.__dict__.pop("_page_csp", None) or API_CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        super().end_headers()
 
     def _send_json(self, status: int, body: dict) -> None:
         data = json.dumps(body, allow_nan=False).encode("utf-8")
@@ -586,6 +615,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
             return
         data = (STATIC_DIR / filename).read_bytes()
+        if allowed[filename] == "text/html":
+            self._page_csp = page_csp(data.decode("utf-8"))   # used once, by end_headers
         self.send_response(200)
         self.send_header("Content-Type", allowed[filename])
         self.send_header("Content-Length", str(len(data)))
