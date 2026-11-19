@@ -431,10 +431,11 @@ cd ../.. && python3 edge/run_supervisor.py --cluster east-wing --cloud-url "$(te
 Or start the whole stack against it: `NIMBUS_CLOUD_URL=<api_endpoint> NIMBUS_EDGE_TOKEN=<token> ./run_all.sh kinematic`.
 Requests and console calls send `Authorization: Bearer <token>` with the requester or operator token.
 
-7. Tear down (empty the results bucket first, or `destroy` stops at it):
+7. Tear down. The results bucket is versioned, so empty every version first, or `destroy` stops at it (the
+   access-log bucket empties itself; the KMS key is deleted after a 30-day waiting period):
 
 ```bash
-aws s3 rm "s3://$(terraform -chdir=infra/terraform output -raw outputs_bucket)" --recursive
+python -c "import boto3, sys; boto3.resource('s3').Bucket(sys.argv[1]).object_versions.delete()" "$(terraform -chdir=infra/terraform output -raw outputs_bucket)"
 ```
 
 ```bash

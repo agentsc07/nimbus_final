@@ -24,6 +24,15 @@ resource "aws_dynamodb_table" "state" {
     attribute_name = "ttl"
     enabled        = true
   }
+
+  point_in_time_recovery {
+    enabled = true # leases, claims and dedupe ids can be restored to any second of the last 35 days (#25)
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.data.arn # data_protection.tf
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -195,6 +204,7 @@ resource "aws_iam_role_policy" "task_p3" {
 resource "aws_sqs_queue" "escalations_dlq" {
   name                      = "${local.name_prefix}-escalations-dlq"
   message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true # SSE-SQS, same as the main queue (#25)
 }
 
 resource "aws_sqs_queue_redrive_policy" "escalations" {
