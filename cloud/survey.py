@@ -28,8 +28,9 @@ class Surveyor:
         minutes = payload.get("deadline_minutes") or p.deadline_minutes
         kinds = set(o.pack.ontology.get("survey_kinds", []))
         targets = [o.topo.anchor_of(z) or z for z in payload.get("places") or []]
-        targets = [t for t in dict.fromkeys(targets) if t in o.topo.nodes] or \
-                  [n for n, d in sorted(o.topo.nodes.items()) if d["kind"] in kinds]
+        targets = [t for t in dict.fromkeys(targets) if t in o.topo.nodes and o.topo.nodes[t].get("delivery_supported", True)] or \
+                  [n for n, d in sorted(o.topo.nodes.items())
+                   if d["kind"] in kinds and d.get("delivery_supported", True)]
         specs, remaining = [], list(targets)
         for cid in sorted(o.fleet.clusters):
             zones = o.topo.cluster_zones(cid)

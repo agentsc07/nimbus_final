@@ -110,9 +110,13 @@ def eligible_options(spec: dict, view: FleetView) -> tuple[list[Option], list[Ex
             excluded.append(Exclusion(cid, f"no {spec['item']} in stock", True))
             continue
         start = src if src is not None else topo.home_of(cid)
+        base_route = topo.shortest_path(start, dest, allowed=zones)
+        if base_route is None:
+            excluded.append(Exclusion(cid, "destination is permanently unreachable in the topology", False))
+            continue
         route = topo.shortest_path(start, dest, allowed=zones - avoid, avoid=avoid)
         if route is None:
-            excluded.append(Exclusion(cid, "no route inside the cluster avoiding restricted zones", False))
+            excluded.append(Exclusion(cid, "no route while corridors are closed or restricted", True))
             continue
         free = [(r, v) for r, v in sorted(c["robots"].items()) if v["state"] != "failed" and view.robot_free(r)]
         if not free:
