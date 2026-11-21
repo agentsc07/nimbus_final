@@ -97,7 +97,7 @@ def test_robot_position_unknown_cannot_be_reassigned():
 def test_another_cluster_collects_the_item_where_the_first_robot_is_parked_on_the_gazebo_map():
     orch = make_orch(pack=Pack.load("hospital_sim"))
     t = new_task(1, "x")
-    text = "Deliver a wheelchair to ward 3, routine."
+    text = "Deliver a wheelchair to equipment store, routine."
     out = orch.handle_request(t, text)
     assert out.kind == "leased"
     t.update(spec=out.spec, lease=out.lease, reservation=out.reservation, status="leased", request_text=text)

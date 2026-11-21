@@ -149,7 +149,7 @@ def finish_run(orch, tally, t, out, config):
 # -- the tasks (PRD Table 3), on P1's map -------------------------------------------------------------------------------------
 
 def t1(orch, config, rng, tally):
-    t, out = ask(orch, 1, "Deliver a wheelchair to ward 3, routine.", tally)
+    t, out = ask(orch, 1, "Deliver a wheelchair to 2B-12, routine.", tally)
     tally.ok = out.kind == "leased" and relay(orch, config, t, out.lease, tally)
     if out.lease:
         finish_run(orch, tally, t, out, config)
@@ -158,7 +158,7 @@ def t1(orch, config, rng, tally):
 def t2(orch, config, rng, tally):
     for i in range(rng.randint(1, 2)):                                 # background traffic first
         ask(orch, 10 + i, "Deliver a blanket to ward 2C, routine.", Tally())
-    t, out = ask(orch, 1, "Need a monitor at ward 3, urgent.", tally)
+    t, out = ask(orch, 1, "Need a monitor at 2B-12, urgent.", tally)
     tally.ok = out.kind == "leased" and out.lease["priority"] == "urgent" and relay(orch, config, t, out.lease, tally)
     if out.lease:
         finish_run(orch, tally, t, out, config)
@@ -172,16 +172,17 @@ def t3(orch, config, rng, tally):
 
 
 def t4(orch, config, rng, tally):
-    # picked up at the nurse station, a hub with two ways into the ward (the store's only way in is one corridor)
+    # A closure on the south approach must not interrupt a nurse-station to 2B trip;
+    # the physical Gazebo map has no second route through the disconnected Ward 3.
     t, out = ask(orch, 1, "Move a monitor from nurse-station to 2B, routine.", tally)
     if out.kind != "leased":
         return
-    # the corridor on the route is blocked: C1/C3 detour on the edge INSIDE the lease; C2 asks the cloud at every step
-    lease, interior = out.lease, [z for z in out.lease["allowed_zones"] if z.endswith("_mid_hall")]
+    # The unaffected route remains available inside the lease; C2 asks the cloud at every step.
+    lease, interior = out.lease, ["east_south_hall"]
     detour = bool(interior) and orch.topo.shortest_path(lease["allowed_zones"][0], out.spec["destination_anchor"],
                                                        allowed=set(lease["allowed_zones"]), avoid=set(interior)) is not None
     tally.ok = relay(orch, config, t, lease, tally, blocked=interior) and detour
-    tally.note = "detour exists inside the lease" if detour else "no detour inside the lease"
+    tally.note = "route remains available inside the lease" if detour else "no route inside the lease"
     finish_run(orch, tally, t, out, config)
 
 
@@ -196,15 +197,15 @@ def t5(orch, config, rng, tally):
         return
     t.update(spec=out.spec, lease=done.lease, legs=out.legs, leg_index=1, status="leased")
     orch.fleet.heartbeat(done.lease["cluster_id"], {"robots": [{"id": done.lease["assigned_robots"][0], "state": "busy", "zone": "north_hall"}]})
-    ev = {"what_happened": "west_north_gate closed", "where": "west_north_gate", "robots_saw": ["door shut"],
-          "segments": [{"segment_id": "west_north_gate", "state": "closed"}]}
+    ev = {"what_happened": "west_south_hall closed", "where": "west_south_hall", "robots_saw": ["door shut"],
+          "segments": [{"segment_id": "west_south_hall", "state": "closed"}]}
     tally.edge_message(ev)
     react = orch.react.on_event(t, ev)                                  # C3 uses the rules; C1/C2 the model (the cloud, both)
     tally.calls += react.llm_calls; tally.tin += react.tokens_in; tally.tout += react.tokens_out; tally.cloud_decisions += 1
     new = react.outcome
     if new is not None:
         tally.wan += sum(size(p) for _, p in new.publish)
-    tally.ok = new is not None and new.kind == "leased" and "west_north_gate" in new.lease["forbidden_zones"] \
+    tally.ok = new is not None and new.kind == "leased" and "west_south_hall" in new.lease["forbidden_zones"] \
         and relay(orch, config, t, new.lease, tally)
     if new is not None and new.lease:
         finish_run(orch, tally, t, new, config)
@@ -249,16 +250,19 @@ def t7(orch, config, rng, tally):
 def t8(orch, config, rng, tally):
     """Three simultaneous requests, two robots: two run, one waits, and runs when a robot frees (no robot ever holds two)."""
     tasks, outs = {}, []
-    for i in range(3):
-        t, out = ask(orch, i + 1, "Deliver a blanket to ward 3, routine.", tally)
+    # Alternate wings: neither Ward 2B nor 2C alone is eligible to both clusters,
+    # but the simultaneous workload still makes both clusters contend as T8 requires.
+    for i, destination in enumerate(("2B", "2C", "2B")):
+        t, out = ask(orch, i + 1, f"Deliver a blanket to {destination}, routine.", tally)
         outs.append(out.kind); tasks[t["task_id"]] = t
     first = next(t for t in tasks.values() if t["status"] == "leased")
+    initial_robots = [t["lease"]["assigned_robots"][0] for t in tasks.values() if t["status"] == "leased"]
     orch.finish(first); first["status"] = "completed"
     done = orch.drain(tasks.get)
     for _, o in done:
         tally.outcome(o)
-    robots = [t["lease"]["assigned_robots"][0] for t in tasks.values() if t["status"] == "leased"] + [o.lease["assigned_robots"][0] for _, o in done]
-    tally.ok = outs.count("leased") == 2 and outs.count("queued") == 1 and len(done) == 1 and len(robots) == len(set(robots))
+    tally.ok = (outs.count("leased") == 2 and outs.count("queued") == 1 and len(done) == 1
+                and len(initial_robots) == len(set(initial_robots)))
     tally.note = f"{outs.count('leased')} leased now, {outs.count('queued')} queued, {len(done)} released after a robot freed"
     tally.complete_s = tally.calls * LLM_LATENCY_S
     tally.deadline_ok = tally.ok

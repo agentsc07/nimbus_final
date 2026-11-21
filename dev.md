@@ -385,11 +385,10 @@ be added. They can reuse `ResultDir` from `experiments/cloud/lib.py` so their fo
 
 ## Known issues
 
-- **18 failing tests on this branch.** They came in with the latest merges from `main` (navigation, map and topology changes).
-  The robot map dropped the corridor that ran through a wall into ward 3. This was correct for the robots, but ward
-  3 (`south_room_approach`) is now unreachable in the robot map and in the `hospital_sim` pack, while
-  `hospital_sim6/topology.json` still has the edge. The ward needs a route through its real doorway in
-  `simulation/hospital_world/topology/`, after which the packs are regenerated (`scripts/build_sim_topology.py`).
+- **Ward 3 is deliberately not a delivery destination in the Gazebo packs.** `south_room_approach` remains on the
+  map for simulation geometry, but the physical map has no traversable connection to it. The cloud excludes it from
+  requester suggestions and rejects explicit requests as permanently unreachable; it does not substitute another ward.
+  Rebuild each derived Gazebo topology with `python3 scripts/build_sim_topology.py --pack <pack>` after a P1 map update.
 - **No turnaround yet.** The robot SDK refuses any goal behind the robot ("refusing an unsafe forward U-turn"), so
   the return leg of a trip, or a detour that needs the robot to turn back, is reported as `BLOCKED`. A three-point
   turn in `ground_robot_sdk/navigation.py`, checked against the occupancy map, would fix it.
